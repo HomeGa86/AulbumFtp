@@ -19,6 +19,7 @@ import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -112,6 +113,7 @@ public class SyncService extends Service {
         updateNotification("正在查找远程图片列表...");
         ftpHelper.listAllFiles(basePath, allRemoteFiles);
         Log.d(TAG, "FTP 上共有 " + allRemoteFiles.size() + " 个图片文件");
+        updateNotification("FTP 上共有 " + allRemoteFiles.size() + " 个图片文件");
 
         // 4. 过滤出未下载的文件
         List<String> newFiles = new ArrayList<>();
@@ -121,6 +123,7 @@ public class SyncService extends Service {
             }
         }
         Log.d(TAG, "需要下载 " + newFiles.size() + " 个新文件");
+        updateNotification("需要下载 " + newFiles.size() + " 个新文件");
 
         // 5. 逐个下载
         int total = newFiles.size();
@@ -244,7 +247,8 @@ public class SyncService extends Service {
 
         // 如果下载了图片，通知 MainActivity 刷新
         if (successCount > 0) {
-            sendBroadcast(new Intent("com.echo2080.picsync.REFRESH_IMAGES"));
+            Intent intent = new Intent("com.echo2080.picsync.REFRESH_IMAGES");
+            LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         }
     }
 

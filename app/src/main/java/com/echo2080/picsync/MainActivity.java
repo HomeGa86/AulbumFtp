@@ -96,6 +96,9 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        thumbnailDir = new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "thumbnails");
+        database = AppDatabase.getInstance(this);
+
         // 第一步：检查并申请权限
         checkAndRequestPermission();
 
@@ -106,8 +109,6 @@ public class MainActivity extends AppCompatActivity {
         );
 
 
-        database = AppDatabase.getInstance(this);
-        thumbnailDir = new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "thumbnails");
 
 
         GridLayoutManager gridLayoutManager = new GridLayoutManager(this, 3);
@@ -256,12 +257,6 @@ public class MainActivity extends AppCompatActivity {
             Intent serviceIntent = new Intent(this, SyncService.class);
             startService(serviceIntent);
 
-            // 2. 再延迟 5 秒（假设下载需要时间），然后加载图片
-            // 这里的 5000ms 应该根据你的网络速度调整
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                // dialog.dismiss();
-                loadImages(); // 此时强制刷新界面
-            }, 5000);
         }, 1000);
     }
 
@@ -353,9 +348,15 @@ public class MainActivity extends AppCompatActivity {
 
             // 1. 递归遍历缩略图目录下的所有文件
             List<File> thumbnailFiles = new ArrayList<>();
+            long startTime = System.currentTimeMillis();
             listFilesRecursively(thumbnailDir, thumbnailFiles);
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - startTime;
+            Log.d("TimeDebug", "listFilesRecursively 执行耗时: " + duration + " ms");
+
 
             // 用于解析 EXIF 时间字符串的格式化器
+            startTime = System.currentTimeMillis();
             SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.getDefault());
 
             for (File file : thumbnailFiles) {
@@ -391,7 +392,13 @@ public class MainActivity extends AppCompatActivity {
                 loadedItems.add(item);
             }
 
+            endTime = System.currentTimeMillis();
+            duration = endTime - startTime;
+            Log.d("TimeDebug", "解析EXIF信息 执行耗时: " + duration + " ms");
+
+
             // 1. 排序（确保图片是按时间顺序排好的）
+            startTime = System.currentTimeMillis();
             Collections.sort(loadedItems, (item1, item2) -> Long.compare(item2.captureTime, item1.captureTime));
 
             // 2. 【新增】插入分组 Header
@@ -415,6 +422,9 @@ public class MainActivity extends AppCompatActivity {
                 finalList.add(item);
                 Log.d("loadImages", "Image:" + item.getLocalUri());
             }
+            endTime = System.currentTimeMillis();
+            duration = endTime - startTime;
+            Log.d("TimeDebug", "排序和插入分组Header 执行耗时: " + duration + " ms");
 
             Log.d("loadImages", "finalList size:" + finalList.size());
 
@@ -424,8 +434,16 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 imagePathList.clear();
                 imagePathList.addAll(finalList); // 注意：这里 imagePathList 现在是 List<ImageItem> 类型
+                long lamdaStartTime = System.currentTimeMillis();
                 adapter.notifyDataSetChanged();
+                long lamdaEndTime = System.currentTimeMillis();
+                long lamdaDuration = lamdaEndTime - lamdaStartTime;
+                Log.d("TimeDebug", "notifyDataSetChanged 执行耗时: " + lamdaDuration + " ms");
+                lamdaStartTime = System.currentTimeMillis();
                 queryFtpPathsForAllImages();
+                lamdaEndTime = System.currentTimeMillis();
+                lamdaDuration = lamdaEndTime - lamdaStartTime;
+                Log.d("TimeDebug", "queryFtpPathsForAllImages 执行耗时: " + lamdaDuration + " ms");
             });
         }).start();
     }
