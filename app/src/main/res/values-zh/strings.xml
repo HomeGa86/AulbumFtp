@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">相册FTP</string>
+    <string name="original_image_loaded">已加载原图</string>
+    <string name="failed_to_load">加载失败</string>
+    <string name="saved">已保存</string>
+    <string name="sync_complete">同步完成</string>
+    <string name="sync_begin">同步中</string>
+    <string name="save">保存</string>
+    <string name="ftp_set">配置FTP服务器信息</string>
+    <string name="cancel">取消</string>
+</resources>

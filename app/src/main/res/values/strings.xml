@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">AlbumFtp</string>
+    <string name="original_image_loaded">Original image loaded</string>
+    <string name="failed_to_load">Failed</string>
+    <string name="saved">Saved</string>
+    <string name="sync_complete">Sync Complete</string>
+    <string name="sync_begin">Downloading</string>
+    <string name="save">Save</string>
+    <string name="ftp_set">FTP Server Setting</string>
+    <string name="cancel">Cancel</string>
+</resources>

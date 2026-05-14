@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <EditText
+        android:id="@+id/et_ftp_host"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="FTP 服务器地址 (如 192.168.1.100)" />
+
+    <EditText
+        android:id="@+id/et_ftp_port"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="端口 (默认 21)"
+        android:inputType="number" />
+
+    <EditText
+        android:id="@+id/et_ftp_user"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="用户名" />
+
+    <EditText
+        android:id="@+id/et_ftp_pass"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="密码"
+        android:inputType="textPassword" />
+
+    <EditText
+        android:id="@+id/et_ftp_base_path"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="/" />
+
+    <CheckBox
+        android:id="@+id/cb_passive_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="启用被动模式 (Passive Mode)"
+        android:checked="true" />
+
+</LinearLayout>
