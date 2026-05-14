@@ -46,6 +46,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Locale;
 
 
@@ -59,6 +60,7 @@ import com.bumptech.glide.Glide;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -346,61 +348,41 @@ public class MainActivity extends AppCompatActivity {
         new Thread(() -> {
             List<ImageItem> loadedItems = new ArrayList<>();
 
-            // 1. 递归遍历缩略图目录下的所有文件
-            List<File> thumbnailFiles = new ArrayList<>();
+            // 1. 【新增】一次性从数据库取出所有文件信息（包含已经解析好的拍摄时间）
             long startTime = System.currentTimeMillis();
-            listFilesRecursively(thumbnailDir, thumbnailFiles);
-            long endTime = System.currentTimeMillis();
-            long duration = endTime - startTime;
-            Log.d("TimeDebug", "listFilesRecursively 执行耗时: " + duration + " ms");
+            List<DownloadedFileEntity> allDbFiles = database.downloadedFileDao().getAllDownloadedFiles();
 
+            // 将数据库数据转为 Map，方便后续通过路径快速查找（Key为本地缩略图路径）
+            Map<String, Long> dbFileMap = new HashMap<>();
+            for (DownloadedFileEntity entity : allDbFiles) {
+                dbFileMap.put(entity.getLocalThumbnailPath(), entity.getCaptureTime());
+            }
+            Log.d("TimeDebug", "从数据库加载所有文件信息耗时: " + (System.currentTimeMillis() - startTime) + " ms");
 
-            // 用于解析 EXIF 时间字符串的格式化器
+            // 2. 递归遍历本地缩略图目录下的所有文件
+            List<File> thumbnailFiles = new ArrayList<>();
             startTime = System.currentTimeMillis();
-            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.getDefault());
+            listFilesRecursively(thumbnailDir, thumbnailFiles);
+            Log.d("TimeDebug", "遍历本地文件耗时: " + (System.currentTimeMillis() - startTime) + " ms");
 
+            // 3. 极速构建 ImageItem 列表（不再需要逐个解析 EXIF！）
+            startTime = System.currentTimeMillis();
             for (File file : thumbnailFiles) {
                 String filePath = file.getAbsolutePath();
-                Uri uri = Uri.fromFile(file);
-                String uriString = uri.toString();
+                String uriString = Uri.fromFile(file).toString();
 
-                // 2. 【新增】读取这张图片的拍摄时间
-                long captureTime = 0;
-                try {
-                    ExifInterface exif = new ExifInterface(filePath);
-                    // 获取 EXIF 中的原始拍摄时间字符串
-                    String dateTime = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
-                    if (dateTime != null) {
-                        // 将字符串转换为时间戳（毫秒）
-                        Date date = dateFormat.parse(dateTime);
-                        if (date != null) {
-                            captureTime = date.getTime();
-                        }
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    // 如果读取 EXIF 失败，captureTime 默认为 0
-                }
+                // 直接从 Map 中获取拍摄时间，如果数据库里没有（比如旧数据），则回退到文件修改时间
+                long captureTime = dbFileMap.getOrDefault(filePath, file.lastModified());
 
-                // 如果 EXIF 里没有拍摄时间，可以退一步使用文件最后的修改时间
-                if (captureTime == 0) {
-                    captureTime = file.lastModified();
-                }
-
-                // 3. 创建 ImageItem 时，把拍摄时间传进去
+                // 创建 ImageItem
                 ImageItem item = new ImageItem(uriString, "", captureTime);
                 loadedItems.add(item);
             }
+            Log.d("TimeDebug", "构建ImageItem列表耗时: " + (System.currentTimeMillis() - startTime) + " ms");
 
-            endTime = System.currentTimeMillis();
-            duration = endTime - startTime;
-            Log.d("TimeDebug", "解析EXIF信息 执行耗时: " + duration + " ms");
-
-
-            // 1. 排序（确保图片是按时间顺序排好的）
+            // 4. 排序（确保图片按时间倒序排列）
             startTime = System.currentTimeMillis();
             Collections.sort(loadedItems, (item1, item2) -> Long.compare(item2.captureTime, item1.captureTime));
-
             // 2. 【新增】插入分组 Header
             List<ImageItem> finalList = new ArrayList<>();
             SimpleDateFormat groupFormat = new SimpleDateFormat("yyyy年MM月", Locale.CHINESE); // 2024年12月
@@ -422,9 +404,6 @@ public class MainActivity extends AppCompatActivity {
                 finalList.add(item);
                 Log.d("loadImages", "Image:" + item.getLocalUri());
             }
-            endTime = System.currentTimeMillis();
-            duration = endTime - startTime;
-            Log.d("TimeDebug", "排序和插入分组Header 执行耗时: " + duration + " ms");
 
             Log.d("loadImages", "finalList size:" + finalList.size());
 

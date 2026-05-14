@@ -13,11 +13,14 @@ public class DownloadedFileEntity {
 
     private String localThumbnailPath; // 本地缩略图路径
     private long downloadTime;         // 下载时间戳
+    private long captureTime;          // 【新增】图片拍摄时间戳
 
-    public DownloadedFileEntity(@NonNull String ftpPath, String localThumbnailPath, long downloadTime) {
+    // 【修改】构造函数增加 captureTime 参数
+    public DownloadedFileEntity(@NonNull String ftpPath, String localThumbnailPath, long downloadTime, long captureTime) {
         this.ftpPath = ftpPath;
         this.localThumbnailPath = localThumbnailPath;
         this.downloadTime = downloadTime;
+        this.captureTime = captureTime;
     }
 
     @NonNull
@@ -31,5 +34,10 @@ public class DownloadedFileEntity {
 
     public long getDownloadTime() {
         return downloadTime;
+    }
+
+    // 【新增】captureTime 的 Getter 方法
+    public long getCaptureTime() {
+        return captureTime;
     }
 }

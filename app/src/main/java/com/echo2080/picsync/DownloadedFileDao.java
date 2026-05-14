@@ -21,4 +21,8 @@ public interface DownloadedFileDao {
 
     @Query("SELECT COUNT(*) FROM downloaded_files")
     int getDownloadedCount();
+
+    @Query("SELECT * FROM downloaded_files")
+    List<DownloadedFileEntity> getAllDownloadedFiles();
+
 }

@@ -16,6 +16,9 @@ import com.bumptech.glide.request.transition.Transition;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -112,32 +115,64 @@ public class ThumbnailHelper {
     /**
      * 将原图的 EXIF 信息（拍摄日期、地点、相机参数等）复制到缩略图中
      */
-    public static void copyExifInfo(File sourceFile, File destFile) {
+    public static ExifInfo copyExifInfo(File sourceFile, File destFile) {
+        long captureTime = 0;
+        double latitude = 0.0;
+        double longitude = 0.0;
+
         try {
             // 读取原图的 EXIF 信息
             ExifInterface sourceExif = new ExifInterface(sourceFile.getAbsolutePath());
             // 准备写入缩略图的 EXIF 信息
             ExifInterface destExif = new ExifInterface(destFile.getAbsolutePath());
 
-            // 定义需要保留的关键 EXIF 标签
+            // 1. 提取并转换拍摄时间
+            String dateTime = sourceExif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
+            if (dateTime == null) {
+                dateTime = sourceExif.getAttribute(ExifInterface.TAG_DATETIME);
+            }
+            if (dateTime != null) {
+                try {
+                    // EXIF 时间格式通常为 "yyyy:MM:dd HH:mm:ss"
+                    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.getDefault());
+                    Date date = dateFormat.parse(dateTime);
+                    if (date != null) {
+                        captureTime = date.getTime();
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+
+            // 2. 提取并转换 GPS 坐标
+            String latRef = sourceExif.getAttribute(ExifInterface.TAG_GPS_LATITUDE_REF);
+            String latValue = sourceExif.getAttribute(ExifInterface.TAG_GPS_LATITUDE);
+            String lonRef = sourceExif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF);
+            String lonValue = sourceExif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE);
+
+            if (latRef != null && latValue != null && lonRef != null && lonValue != null) {
+                latitude = convertGpsToDecimal(latValue, latRef);
+                longitude = convertGpsToDecimal(lonValue, lonRef);
+            }
+
+            // 3. 复制其他关键 EXIF 标签到缩略图
             String[] tags = {
-                    ExifInterface.TAG_DATETIME,           // 拍摄日期和时间
-                    ExifInterface.TAG_DATETIME_ORIGINAL,  // 原始拍摄时间
-                    ExifInterface.TAG_DATETIME_DIGITIZED, // 数字化时间
-                    ExifInterface.TAG_GPS_LATITUDE,       // GPS 纬度
+                    ExifInterface.TAG_DATETIME,
+                    ExifInterface.TAG_DATETIME_ORIGINAL,
+                    ExifInterface.TAG_DATETIME_DIGITIZED,
+                    ExifInterface.TAG_GPS_LATITUDE,
                     ExifInterface.TAG_GPS_LATITUDE_REF,
-                    ExifInterface.TAG_GPS_LONGITUDE,      // GPS 经度
+                    ExifInterface.TAG_GPS_LONGITUDE,
                     ExifInterface.TAG_GPS_LONGITUDE_REF,
-                    ExifInterface.TAG_GPS_ALTITUDE,       // GPS 海拔
+                    ExifInterface.TAG_GPS_ALTITUDE,
                     ExifInterface.TAG_GPS_ALTITUDE_REF,
-                    ExifInterface.TAG_GPS_TIMESTAMP,      // GPS 时间戳
-                    ExifInterface.TAG_GPS_DATESTAMP,      // GPS 日期戳
-                    ExifInterface.TAG_MAKE,               // 设备制造商
-                    ExifInterface.TAG_MODEL,              // 设备型号
-                    ExifInterface.TAG_ORIENTATION         // 图片旋转方向（防止缩略图歪掉）
+                    ExifInterface.TAG_GPS_TIMESTAMP,
+                    ExifInterface.TAG_GPS_DATESTAMP,
+                    ExifInterface.TAG_MAKE,
+                    ExifInterface.TAG_MODEL,
+                    ExifInterface.TAG_ORIENTATION
             };
 
-            // 逐个将原图的属性复制到缩略图中
             for (String tag : tags) {
                 String value = sourceExif.getAttribute(tag);
                 if (value != null) {
@@ -150,6 +185,58 @@ public class ThumbnailHelper {
 
         } catch (IOException e) {
             e.printStackTrace();
+        }
+
+        // 返回解析好的数据对象
+        return new ExifInfo(captureTime, latitude, longitude);
+    }
+
+    // 辅助方法：将 EXIF 的度分秒格式 (如 "51/1,2/1,3/1") 转换为十进制数字
+    private static double convertGpsToDecimal(String gpsCoordinate, String ref) {
+        double decimalDegree = 0;
+        try {
+            String[] parts = gpsCoordinate.split(",");
+            if (parts.length == 3) {
+                double degrees = evalFraction(parts[0]);
+                double minutes = evalFraction(parts[1]);
+                double seconds = evalFraction(parts[2]);
+                decimalDegree = degrees + (minutes / 60.0) + (seconds / 3600.0);
+
+                // 如果是南纬(S)或西经(W)，结果需要取负数
+                if ("S".equals(ref) || "W".equals(ref)) {
+                    decimalDegree = -decimalDegree;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return decimalDegree;
+    }
+
+    // 辅助方法：计算分数形式字符串 (如 "2/1") 的值
+    private static double evalFraction(String fraction) {
+        try {
+            String[] nums = fraction.split("/");
+            if (nums.length == 2) {
+                return Double.parseDouble(nums[0]) / Double.parseDouble(nums[1]);
+            }
+            return Double.parseDouble(fraction);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+    // 用于承载 EXIF 解析结果的内部类
+    public static class ExifInfo {
+        public long captureTime;      // 拍摄时间戳（毫秒），如果解析失败则为 0
+        public double latitude;       // 纬度，如果没有则为 0.0
+        public double longitude;      // 经度，如果没有则为 0.0
+        public boolean hasLocation;   // 标记是否包含有效的 GPS 信息
+
+        public ExifInfo(long captureTime, double latitude, double longitude) {
+            this.captureTime = captureTime;
+            this.latitude = latitude;
+            this.longitude = longitude;
+            this.hasLocation = (latitude != 0.0 || longitude != 0.0);
         }
     }
 }

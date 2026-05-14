@@ -216,8 +216,7 @@ public class SyncService extends Service {
                 continue;
             }
 
-            ThumbnailHelper.copyExifInfo(tempFile,thumbnailFile);
-
+            ThumbnailHelper.ExifInfo exifInfo = ThumbnailHelper.copyExifInfo(tempFile, thumbnailFile);
 
             // 5.5 保存 FTP 路径到数据库
             String localUri = Uri.fromFile(new File(thumbnailPath)).toString();
@@ -225,7 +224,7 @@ public class SyncService extends Service {
 
             // 5.6 记录已下载的文件
             database.downloadedFileDao().insert(
-                    new DownloadedFileEntity(remotePath, thumbnailPath, System.currentTimeMillis())
+                    new DownloadedFileEntity(remotePath, thumbnailPath, System.currentTimeMillis(),exifInfo.captureTime == 0 ? tempFile.lastModified() : exifInfo.captureTime)
             );
 
             // 5.7 删除原图
