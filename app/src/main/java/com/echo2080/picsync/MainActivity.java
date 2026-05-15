@@ -133,7 +133,7 @@ public class MainActivity extends AppCompatActivity {
         // 初始化 RecyclerView
         recyclerView = findViewById(R.id.recycler_view);
         recyclerView.setLayoutManager(gridLayoutManager); // 3列网格
-        adapter = new ImageAdapter(imagePathList);
+        adapter = new ImageAdapter(this,imagePathList);
         recyclerView.setAdapter(adapter);
 
 
@@ -185,6 +185,8 @@ public class MainActivity extends AppCompatActivity {
                     editor.apply();
 
                     Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show();
+                    // 【新增逻辑】FTP配置变更，强制重置同步时间戳，让服务立刻重新同步
+                    SyncService.resetFullSyncTimestamp(this);
                     startSyncServiceWithDelay(); // 保存后重启同步服务
                 })
                 // 【新增】如果是修改配置，建议允许用户点击“取消”直接关闭弹窗
@@ -505,125 +507,4 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    // ==================== RecyclerView 适配器 ====================
-
-    /**
-     * 图片列表适配器
-     */
-    class ImageAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
-
-        // 定义 View Type 常量
-        private static final int TYPE_HEADER = 0;
-        private static final int TYPE_IMAGE = 1;
-
-        private final List<ImageItem> items;  // 改为 List<ImageItem>
-
-        ImageAdapter(List<ImageItem> items) {
-            this.items = items;
-        }
-
-        @NonNull
-        @Override
-        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            Log.d("onCreateViewHolder", "onCreateViewHolder begins");
-            if (viewType == TYPE_HEADER) {
-                Log.d("onCreateViewHolder", "Header");
-                // 加载 Header 布局
-                View view = LayoutInflater.from(parent.getContext())
-                        .inflate(R.layout.item_header, parent, false);
-                return new HeaderViewHolder(view);
-            } else {
-                Log.d("onCreateViewHolder", "image");
-                // 加载 Image 布局
-                View view = LayoutInflater.from(parent.getContext())
-                        .inflate(R.layout.item_image, parent, false);
-                return new ImageViewHolder(view);
-            }
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-            ImageItem item = items.get(position);
-            Log.d("onBindViewHolder", "begins:" + position);
-
-            if (holder instanceof HeaderViewHolder) {
-                Log.d("onBindViewHolder", "Binding header:" + item.text);
-                // 绑定 Header 数据
-                ((HeaderViewHolder) holder).textView.setText(item.text);
-            } else if (holder instanceof ImageViewHolder) {
-                Log.d("onBindViewHolder", "准备加载图片: " + item.getLocalUri()); // 加上这行日志
-
-                // 绑定 Image 数据
-                ImageViewHolder imageHolder = (ImageViewHolder) holder;
-                Glide.with(imageHolder.imageView.getContext())
-                        .load(item.getLocalUri())
-                        .centerCrop()
-                        .into(imageHolder.imageView);
-
-                imageHolder.itemView.setOnClickListener(v -> {
-                    Intent intent = new Intent(MainActivity.this, FullScreenActivity.class);
-                    ArrayList<String> localUris = new ArrayList<>();
-                    ArrayList<String> ftpPaths = new ArrayList<>();
-
-                    // 注意：这里传递的是整个列表，点击事件逻辑保持不变
-                    for (ImageItem img : items) {
-                        if (img.type == ImageItem.TYPE_IMAGE) { // 只传递图片项
-                            localUris.add(img.getLocalUri());
-                            ftpPaths.add(img.getFtpPath());
-                        }
-                    }
-                    intent.putStringArrayListExtra("local_uris", localUris);
-                    intent.putStringArrayListExtra("ftp_paths", ftpPaths);
-
-                    // 计算点击位置在图片列表中的实际索引（需要跳过 Header）
-                    int imagePosition = 0;
-                    for (int i = 0; i < position; i++) {
-                        if (items.get(i).type == ImageItem.TYPE_IMAGE) {
-                            imagePosition++;
-                        }
-                    }
-                    intent.putExtra("current_position", imagePosition);
-                    startActivity(intent);
-                });
-            }
-        }
-
-        @Override
-        public int getItemCount() {
-            return items.size();
-        }
-
-        @Override
-        public int getItemViewType(int position) {
-            return items.get(position).type;
-        }
-
-        // ViewHolder for Header
-        class HeaderViewHolder extends RecyclerView.ViewHolder {
-            TextView textView;
-            HeaderViewHolder(@NonNull View itemView) {
-                super(itemView);
-                textView = itemView.findViewById(R.id.header_text);
-            }
-        }
-
-        // ViewHolder for Image
-        class ImageViewHolder extends RecyclerView.ViewHolder {
-            ImageView imageView;
-            ImageViewHolder(@NonNull View itemView) {
-                super(itemView);
-                imageView = itemView.findViewById(R.id.image_view);
-            }
-        }
-
-
-        class ViewHolder extends RecyclerView.ViewHolder {
-            ImageView imageView;
-
-            ViewHolder(@NonNull View itemView) {
-                super(itemView);
-                imageView = itemView.findViewById(R.id.image_view);
-            }
-        }
-    }
 }

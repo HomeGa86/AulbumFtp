@@ -1,7 +1,6 @@
 package com.echo2080.picsync;
 
 import android.content.Context;
-import android.net.Uri;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -13,17 +12,13 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.github.chrisbanes.photoview.PhotoView; // ✅ 修正 1: 修改了导入的包路径
 
-import java.io.File;
-import java.util.List;
 
 public class FullScreenPagerAdapter extends RecyclerView.Adapter<FullScreenPagerAdapter.ViewHolder> {
 
     private Context context;
-    private List<String> imageUris;  // 本地 URI 列表
 
-    public FullScreenPagerAdapter(Context context, List<String> imageUris) {
+    public FullScreenPagerAdapter(Context context) {
         this.context = context;
-        this.imageUris = imageUris;
     }
 
     @NonNull
@@ -36,7 +31,13 @@ public class FullScreenPagerAdapter extends RecyclerView.Adapter<FullScreenPager
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        String uri = imageUris.get(position);
+        // 加上安全判断，防止列表被清空后越界
+        if (ImageAdapter.LoadedImageLocalUrisWhenClick == null
+                || position >= ImageAdapter.LoadedImageLocalUrisWhenClick.size()) {
+            return;
+        }
+
+        String uri = ImageAdapter.LoadedImageLocalUrisWhenClick.get(position);
         Log.d("FullScreenAdapter", "position: " + position);
         Log.d("FullScreenAdapter", "正在加载图片路径: " + uri);
 
@@ -50,12 +51,12 @@ public class FullScreenPagerAdapter extends RecyclerView.Adapter<FullScreenPager
 
     @Override
     public int getItemCount() {
-        return imageUris.size();
+        return ImageAdapter.LoadedImageLocalUrisWhenClick == null ? 0 : ImageAdapter.LoadedImageLocalUrisWhenClick.size();
     }
 
     public void updateImageAt(int position, String newPath) {
-        if (position >= 0 && position < imageUris.size()) {
-            imageUris.set(position, newPath);
+        if (position >= 0 && position < ImageAdapter.LoadedImageLocalUrisWhenClick.size()) {
+            ImageAdapter.LoadedImageLocalUrisWhenClick.set(position, newPath);
             notifyItemChanged(position);
         }
     }

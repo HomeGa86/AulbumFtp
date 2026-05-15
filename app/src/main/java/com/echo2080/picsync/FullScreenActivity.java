@@ -3,7 +3,6 @@ package com.echo2080.picsync;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -13,16 +12,12 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.viewpager2.widget.ViewPager2;
 
-import com.bumptech.glide.Glide;
-
 import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.net.SocketException;
-import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.commons.net.ftp.FTPReply;
@@ -31,8 +26,6 @@ public class FullScreenActivity extends AppCompatActivity {
 
     private ViewPager2 viewPager;
     private FullScreenPagerAdapter adapter;
-    private ArrayList<String> localUris;   // 本地缩略图 URI 列表
-    private ArrayList<String> ftpPaths;    // FTP 路径列表
     private int currentPosition;
 
 
@@ -50,8 +43,6 @@ public class FullScreenActivity extends AppCompatActivity {
         setContentView(R.layout.activity_full_screen);
 
         Intent intent = getIntent();
-        localUris = intent.getStringArrayListExtra("local_uris");
-        ftpPaths = intent.getStringArrayListExtra("ftp_paths");
         currentPosition = intent.getIntExtra("current_position", 0);
 
         cacheDir = new File(getCacheDir(), "full_images");
@@ -61,8 +52,8 @@ public class FullScreenActivity extends AppCompatActivity {
         }
 
         viewPager = findViewById(R.id.view_pager);
-        Log.d("FullScreenActivity:onCreate localUris size:",String.valueOf(localUris.size()));
-        adapter = new FullScreenPagerAdapter(this, localUris);
+        Log.d("FullScreenActivity:onCreate localUris size:",String.valueOf(ImageAdapter.LoadedImageLocalUrisWhenClick.size()));
+        adapter = new FullScreenPagerAdapter(this);
         viewPager.setAdapter(adapter);
         viewPager.setCurrentItem(currentPosition, false);
 
@@ -92,9 +83,9 @@ public class FullScreenActivity extends AppCompatActivity {
      * 使用 ftpPaths 中对应的路径
      */
     private void tryDownloadOriginalImage(int position) {
-        if (position >= ftpPaths.size()) return;
+        if (position >= ImageAdapter.LoadedImageFtpUrisWhenClick.size()) return;
 
-        String ftpPath = ftpPaths.get(position);
+        String ftpPath = ImageAdapter.LoadedImageFtpUrisWhenClick.get(position);
         if (ftpPath == null || ftpPath.isEmpty()) return;
 
         // 从 FTP 路径中提取文件名
@@ -174,8 +165,30 @@ public class FullScreenActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (executor != null && !executor.isShutdown()) {
-            executor.shutdown();
+
+        // 1. 取消 ViewPager 的页面改变监听，防止销毁过程中触发回调
+        viewPager.unregisterOnPageChangeCallback(null);
+
+        // 2. 清空 Adapter 的数据引用，防止内存泄漏
+        if (adapter != null) {
+            // 如果 FullScreenPagerAdapter 有提供清空数据的方法，可以在这里调用
+            // 或者直接让 adapter 指向 null，帮助 GC 回收
+            adapter = null;
         }
+
+        // 3. 关闭后台下载线程池，防止退出后还在下载
+        if (executor != null && !executor.isShutdown()) {
+            executor.shutdownNow(); // 使用 shutdownNow 尝试立即停止所有正在执行的任务
+        }
+
+        // 4. 【核心】清空静态大列表，释放内存
+        if (ImageAdapter.LoadedImageLocalUrisWhenClick != null) {
+            ImageAdapter.LoadedImageLocalUrisWhenClick.clear();
+        }
+        if (ImageAdapter.LoadedImageFtpUrisWhenClick != null) {
+            ImageAdapter.LoadedImageFtpUrisWhenClick.clear();
+        }
+
+        Log.d("FullScreenActivity", "已清空静态图片列表，释放内存");
     }
 }

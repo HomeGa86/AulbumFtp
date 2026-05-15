@@ -92,26 +92,22 @@ public class FtpHelper {
     /**
      * 递归遍历 FTP 服务器上的所有文件
      */
-    public void listAllFiles(String remotePath, List<String> fileList) {
-        try {
-            FTPFile[] files = ftpClient.listFiles(remotePath);
-            for (FTPFile file : files) {
-                String fullPath = remotePath.endsWith("/") ? remotePath + file.getName() : remotePath + "/" + file.getName();
-                if (file.isDirectory()) {
-                    if (!file.getName().startsWith(".")) { // 跳过隐藏目录
-                        listAllFiles(fullPath, fileList);
-                    }
-                } else if (file.isFile()) {
-                    // 只处理图片文件
-                    String name = file.getName().toLowerCase();
-                    if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
-                            || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp")) {
-                        fileList.add(fullPath);
-                    }
+    public void listAllFiles(String remotePath, List<String> fileList) throws IOException {
+        FTPFile[] files = ftpClient.listFiles(remotePath);
+        for (FTPFile file : files) {
+            String fullPath = remotePath.endsWith("/") ? remotePath + file.getName() : remotePath + "/" + file.getName();
+            if (file.isDirectory()) {
+                if (!file.getName().startsWith(".")) { // 跳过隐藏目录
+                    listAllFiles(fullPath, fileList);
+                }
+            } else if (file.isFile()) {
+                // 只处理图片文件
+                String name = file.getName().toLowerCase();
+                if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
+                        || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp")) {
+                    fileList.add(fullPath);
                 }
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 

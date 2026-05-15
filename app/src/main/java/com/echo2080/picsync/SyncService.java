@@ -35,6 +35,12 @@ public class SyncService extends Service {
     private static final String CHANNEL_ID = "sync_channel";
     private static final int NOTIFICATION_ID = 1;
 
+    // 新增：用于存储同步状态的 SharedPreferences 键名
+    private static final String PREFS_NAME = "SyncServicePrefs";
+    private static final String KEY_LAST_FULL_SYNC_TIME = "last_full_sync_time";
+    // 10天的毫秒数 (10 * 24 * 60 * 60 * 1000)
+    private static final long FULL_SYNC_INTERVAL_MS = 10 * 24 * 60 * 60 * 1000L;
+
     private AppDatabase database;
     private FtpHelper ftpHelper;
     private ExecutorService executor;
@@ -43,6 +49,15 @@ public class SyncService extends Service {
 
     // 缩略图保存目录
     private File thumbnailDir;
+
+    public static void resetFullSyncTimestamp(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putLong(KEY_LAST_FULL_SYNC_TIME, 0L); // 重置为0
+        editor.apply();
+        Log.d(TAG, "FTP配置已变更，已重置完全同步时间戳，下次将强制执行同步。");
+    }
+
 
     @Override
     public void onCreate() {
@@ -58,16 +73,13 @@ public class SyncService extends Service {
             thumbnailDir.mkdirs();
         }
 
-        // 创建通知渠道（Android 8.0+ 需要）
         createNotificationChannel();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // 启动前台服务
-        startForeground(NOTIFICATION_ID, createNotification("正在同步图片..."));
+        startForeground(NOTIFICATION_ID, createNotification("正在检查同步状态..."));
 
-        // 如果已经在运行，不再重复启动
         if (isRunning.get()) {
             return START_STICKY;
         }
@@ -75,7 +87,7 @@ public class SyncService extends Service {
         // 在后台线程执行同步任务
         executor.execute(this::syncAllImages);
 
-        return START_STICKY; // 服务被杀死后自动重启
+        return START_STICKY;
     }
 
     @Nullable
@@ -84,17 +96,26 @@ public class SyncService extends Service {
         return null;
     }
 
-    /**
-     * 核心同步方法：遍历 FTP、下载、生成缩略图、记录路径、删除原图
-     */
-    /**
-     * 核心同步方法：遍历 FTP、下载、生成缩略图、记录路径、删除原图
-     */
     private void syncAllImages() {
         isRunning.set(true);
+
+        // 1. 检查是否在10天免打扰期内
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        long lastFullSyncTime = prefs.getLong(KEY_LAST_FULL_SYNC_TIME, 0L);
+        long currentTime = System.currentTimeMillis();
+
+        if (currentTime - lastFullSyncTime < FULL_SYNC_INTERVAL_MS) {
+            long daysRemaining = (FULL_SYNC_INTERVAL_MS - (currentTime - lastFullSyncTime)) / (24 * 60 * 60 * 1000);
+            String skipMsg = "上次完全同步成功在10天内，跳过本次FTP遍历。剩余免打扰天数: " + daysRemaining;
+            Log.d(TAG, skipMsg);
+            updateNotification(skipMsg);
+            isRunning.set(false);
+            return;
+        }
+
         updateNotification("正在连接 FTP 服务器...");
 
-        // 1. 连接 FTP
+        // 2. 连接 FTP
         if (!ftpHelper.connect(this)) {
             Log.e(TAG, "FTP 连接失败");
             updateNotification("FTP 连接失败，稍后重试");
@@ -102,20 +123,27 @@ public class SyncService extends Service {
             return;
         }
 
-        // 2. 获取所有已下载的文件路径（用于去重）
+        // 3. 获取所有已下载的文件路径（用于去重）
         List<String> downloadedPaths = database.downloadedFileDao().getAllDownloadedPaths();
 
-        // 3. 遍历 FTP 获取所有图片文件
-        SharedPreferences prefs = this.getSharedPreferences("AppSettings", MODE_PRIVATE);
-        String basePath = prefs.getString("ftp_base_path", "/");
+        // 4. 遍历 FTP 获取所有图片文件
+        SharedPreferences appPrefs = this.getSharedPreferences("AppSettings", MODE_PRIVATE);
+        String basePath = appPrefs.getString("ftp_base_path", "/");
 
         List<String> allRemoteFiles = new ArrayList<>();
         updateNotification("正在查找远程图片列表...");
-        ftpHelper.listAllFiles(basePath, allRemoteFiles);
+        try {
+            ftpHelper.listAllFiles(basePath, allRemoteFiles);
+        } catch (Exception exception) {
+            updateNotification("查找远程图片列表失败...");
+            isRunning.set(false);
+            return;
+        }
+
         Log.d(TAG, "FTP 上共有 " + allRemoteFiles.size() + " 个图片文件");
         updateNotification("FTP 上共有 " + allRemoteFiles.size() + " 个图片文件");
 
-        // 4. 过滤出未下载的文件
+        // 5. 过滤出未下载的文件
         List<String> newFiles = new ArrayList<>();
         for (String remotePath : allRemoteFiles) {
             if (!downloadedPaths.contains(remotePath)) {
@@ -125,10 +153,13 @@ public class SyncService extends Service {
         Log.d(TAG, "需要下载 " + newFiles.size() + " 个新文件");
         updateNotification("需要下载 " + newFiles.size() + " 个新文件");
 
-        // 5. 逐个下载
+        // 6. 逐个下载
         int total = newFiles.size();
         int current = 0;
         int successCount = 0;
+
+        // 如果没有任何新文件需要下载，说明也是“完全成功”的状态
+        boolean isFullSuccess = (total == 0);
 
         for (String remotePath : newFiles) {
             current++;
@@ -136,44 +167,39 @@ public class SyncService extends Service {
 
             updateNotification("正在下载 (" + current + "/" + total + "): " + fileName);
 
-            // 5.1 下载原图到临时文件 (加入重试机制)
             File tempFile = new File(getCacheDir(), "temp_" + fileName);
 
             boolean downloadSuccess = false;
             int retryCount = 0;
-            final int MAX_RETRY = 3; // 最多重试3次
+            final int MAX_RETRY = 3;
 
             while (!downloadSuccess && retryCount < MAX_RETRY) {
-                // 如果是重试，先删除上次可能下载失败的残缺文件
                 if (retryCount > 0 && tempFile.exists()) {
                     tempFile.delete();
                     Log.w(TAG, "准备第 " + retryCount + " 次重试下载: " + fileName);
-                    // 重试前稍微等待一下，给网络一点恢复时间
                     try { Thread.sleep(1000 * retryCount); } catch (InterruptedException e) {}
                 }
 
                 downloadSuccess = ftpHelper.downloadFile(remotePath, tempFile);
 
-                // 如果下载失败，尝试重新连接 FTP
                 if (!downloadSuccess) {
                     Log.e(TAG, "下载失败，尝试重新连接 FTP...: " + remotePath);
                     boolean reconnectSuccess = ftpHelper.reconnect(this);
                     if (!reconnectSuccess) {
                         Log.e(TAG, "FTP 重连失败，放弃下载: " + remotePath);
-                        break; // 重连也失败了，彻底放弃这张图
+                        break;
                     }
                 }
                 retryCount++;
             }
 
-            // 如果最终还是没下载成功，跳过这张图
             if (!downloadSuccess) {
                 Log.e(TAG, "多次重试后依然下载失败: " + remotePath);
                 if (tempFile.exists()) tempFile.delete();
+                // 只要有一个文件最终下载失败，就不能算作“完全成功”
                 continue;
             }
 
-            // 🔥 强制校验文件完整性
             if (tempFile.length() < 1024) {
                 Log.e(TAG, "文件过小，判定为下载不完整，删除: " + tempFile.getName());
                 tempFile.delete();
@@ -190,8 +216,6 @@ public class SyncService extends Service {
                 continue;
             }
 
-
-            // ⬅️ 5.2 构建缩略图保存路径
             String relativePath = remotePath;
             if (relativePath.startsWith("/")) {
                 relativePath = relativePath.substring(1);
@@ -205,7 +229,6 @@ public class SyncService extends Service {
                 parentDir.mkdirs();
             }
 
-            // 5.3 生成缩略图
             String thumbnailPath = ThumbnailHelper.createAndSaveThumbnail(
                     tempFile, thumbnailFile
             );
@@ -218,42 +241,52 @@ public class SyncService extends Service {
 
             ThumbnailHelper.ExifInfo exifInfo = ThumbnailHelper.copyExifInfo(tempFile, thumbnailFile);
 
-            // 5.5 保存 FTP 路径到数据库
             String localUri = Uri.fromFile(new File(thumbnailPath)).toString();
             database.imageFtpDao().insert(new ImageFtpEntity(localUri, remotePath));
 
-            // 5.6 记录已下载的文件
             database.downloadedFileDao().insert(
-                    new DownloadedFileEntity(remotePath, thumbnailPath, System.currentTimeMillis(),exifInfo.captureTime == 0 ? tempFile.lastModified() : exifInfo.captureTime)
+                    new DownloadedFileEntity(remotePath, thumbnailPath, System.currentTimeMillis(), exifInfo.captureTime == 0 ? tempFile.lastModified() : exifInfo.captureTime)
             );
 
-            // 5.7 删除原图
             tempFile.delete();
 
             successCount++;
             Log.d(TAG, "成功下载并生成缩略图: " + remotePath + " -> " + thumbnailPath);
         }
 
-        // 6. 断开 FTP 连接
+        // 7. 判定本次同步是否“完全成功”
+        // 条件：需要下载的文件总数 > 0 且 实际成功下载数 == 需要下载的文件总数
+        if (total > 0 && successCount == total) {
+            isFullSuccess = true;
+        }
+
+        // 8. 如果完全成功，记录当前时间戳
+        if (isFullSuccess) {
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.putLong(KEY_LAST_FULL_SYNC_TIME, System.currentTimeMillis());
+            editor.apply();
+            Log.d(TAG, "本次同步完全成功，已记录时间戳，未来10天将跳过FTP遍历。");
+        } else {
+            Log.d(TAG, "本次同步存在失败或跳过的文件，不记录完全成功时间戳，下次将继续尝试。");
+        }
+
+        // 9. 断开 FTP 连接
         ftpHelper.disconnect();
 
-        // 7. 更新通知
+        // 10. 更新通知
         String resultMsg = "同步完成，共下载 " + successCount + " 张新图片";
         updateNotification(resultMsg);
         Log.d(TAG, resultMsg);
 
         isRunning.set(false);
 
-        // 如果下载了图片，通知 MainActivity 刷新
         if (successCount > 0) {
-            Intent intent = new Intent("com.echo2080.picsync.REFRESH_IMAGES");
+            Intent intent = new Intent("com.echo2080.ppicsync.REFRESH_IMAGES");
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         }
     }
 
-    /**
-     * 创建通知渠道
-     */
+    // 以下方法保持不变...
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
@@ -269,11 +302,7 @@ public class SyncService extends Service {
         }
     }
 
-    /**
-     * 创建通知
-     */
     private Notification createNotification(String content) {
-        // 点击通知打开 MainActivity
         Intent intent = new Intent(this, MainActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 this, 0, intent,
@@ -289,12 +318,8 @@ public class SyncService extends Service {
                 .build();
     }
 
-    /**
-     * 更新通知内容（需要在主线程执行）
-     */
     private void updateNotification(String content) {
         mainHandler.post(() -> {
-            // 修改点：直接调用 startForeground 来更新前台服务的通知，确保系统感知到服务的活跃状态
             startForeground(NOTIFICATION_ID, createNotification(content));
         });
     }
