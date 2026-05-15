@@ -46,7 +46,7 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".FullScreenActivity" />
+        <activity android:name=".FullScreenActivity" android:theme="@style/Theme.AppCompat.NoActionBar" />
 
     </application>
 </manifest>

@@ -182,11 +182,16 @@ public class FullScreenActivity extends AppCompatActivity {
         }
 
         // 4. 【核心】清空静态大列表，释放内存
-        if (ImageAdapter.LoadedImageLocalUrisWhenClick != null) {
-            ImageAdapter.LoadedImageLocalUrisWhenClick.clear();
-        }
-        if (ImageAdapter.LoadedImageFtpUrisWhenClick != null) {
-            ImageAdapter.LoadedImageFtpUrisWhenClick.clear();
+        if (isFinishing()) {
+            if (ImageAdapter.LoadedImageLocalUrisWhenClick != null) {
+                ImageAdapter.LoadedImageLocalUrisWhenClick.clear();
+            }
+            if (ImageAdapter.LoadedImageFtpUrisWhenClick != null) {
+                ImageAdapter.LoadedImageFtpUrisWhenClick.clear();
+            }
+            Log.d("FullScreenActivity", "用户退出，已清空静态图片列表，释放内存");
+        } else {
+            Log.d("FullScreenActivity", "屏幕旋转，保留静态列表数据");
         }
 
         Log.d("FullScreenActivity", "已清空静态图片列表，释放内存");
