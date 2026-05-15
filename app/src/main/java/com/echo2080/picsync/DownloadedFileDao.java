@@ -25,4 +25,6 @@ public interface DownloadedFileDao {
     @Query("SELECT * FROM downloaded_files")
     List<DownloadedFileEntity> getAllDownloadedFiles();
 
+    @Query("UPDATE downloaded_files SET isDeleted = 1 WHERE ftpPath = :ftpPath")
+    void markAsDeleted(String ftpPath);
 }

@@ -1,9 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ImageView
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/image_view"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="120dp"
+    android:layout_height="wrap_content"> <!-- 修复点1: 改为 wrap_content -->
+
+    <ImageView
+        android:id="@+id/image_view"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
     android:layout_margin="2dp"
     android:scaleType="centerCrop"
-    android:background="#E0E0E0"/>
+    android:background="#E0E0E0" />
+
+    <!-- 新增：选中时的半透明黑色遮罩 -->
+    <View
+        android:id="@+id/selection_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#88000000"
+        android:visibility="gone" />
+
+    <!-- 可选：新增一个对勾图标，让选中状态更明显 -->
+    <ImageView
+        android:id="@+id/selection_check"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_gravity="end|top"
+        android:src="@drawable/ic_check_green"
+        android:visibility="gone" />
+</FrameLayout>

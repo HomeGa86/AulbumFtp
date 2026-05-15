@@ -22,6 +22,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import java.io.File;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -108,17 +109,17 @@ public class SyncService extends Service {
             long daysRemaining = (FULL_SYNC_INTERVAL_MS - (currentTime - lastFullSyncTime)) / (24 * 60 * 60 * 1000);
             String skipMsg = "上次完全同步成功在10天内，跳过本次FTP遍历。剩余免打扰天数: " + daysRemaining;
             Log.d(TAG, skipMsg);
-            updateNotification(skipMsg);
+            updateNotification(MessageFormat.format(getString(R.string.no_need_sync),String.valueOf(daysRemaining)));
             isRunning.set(false);
             return;
         }
 
-        updateNotification("正在连接 FTP 服务器...");
+        updateNotification(getString(R.string.connecting));
 
         // 2. 连接 FTP
         if (!ftpHelper.connect(this)) {
             Log.e(TAG, "FTP 连接失败");
-            updateNotification("FTP 连接失败，稍后重试");
+            updateNotification(getString(R.string.failed_to_connect));
             isRunning.set(false);
             return;
         }
@@ -131,18 +132,16 @@ public class SyncService extends Service {
         String basePath = appPrefs.getString("ftp_base_path", "/");
 
         List<String> allRemoteFiles = new ArrayList<>();
-        updateNotification("正在查找远程图片列表...");
+        updateNotification(getString(R.string.loading_file_list));
         try {
             ftpHelper.listAllFiles(basePath, allRemoteFiles);
         } catch (Exception exception) {
-            updateNotification("查找远程图片列表失败...");
+            updateNotification(getString(R.string.failed_to_load_list));
             isRunning.set(false);
             return;
         }
 
         Log.d(TAG, "FTP 上共有 " + allRemoteFiles.size() + " 个图片文件");
-        updateNotification("FTP 上共有 " + allRemoteFiles.size() + " 个图片文件");
-
         // 5. 过滤出未下载的文件
         List<String> newFiles = new ArrayList<>();
         for (String remotePath : allRemoteFiles) {
@@ -151,7 +150,7 @@ public class SyncService extends Service {
             }
         }
         Log.d(TAG, "需要下载 " + newFiles.size() + " 个新文件");
-        updateNotification("需要下载 " + newFiles.size() + " 个新文件");
+        updateNotification(MessageFormat.format(getString(R.string.x_files_to_download),newFiles.size()));
 
         // 6. 逐个下载
         int total = newFiles.size();
@@ -165,7 +164,7 @@ public class SyncService extends Service {
             current++;
             String fileName = remotePath.substring(remotePath.lastIndexOf("/") + 1);
 
-            updateNotification("正在下载 (" + current + "/" + total + "): " + fileName);
+            updateNotification(MessageFormat.format(getString(R.string.downloading),current,total,fileName));
 
             File tempFile = new File(getCacheDir(), "temp_" + fileName);
 
@@ -275,7 +274,7 @@ public class SyncService extends Service {
 
         // 10. 更新通知
         String resultMsg = "同步完成，共下载 " + successCount + " 张新图片";
-        updateNotification(resultMsg);
+        updateNotification(MessageFormat.format(getString(R.string.sync_done),successCount));
         Log.d(TAG, resultMsg);
 
         isRunning.set(false);

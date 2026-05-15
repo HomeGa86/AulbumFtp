@@ -42,6 +42,8 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import android.content.Context;
 
 import android.media.ExifInterface;
+
+import java.text.MessageFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
@@ -218,14 +220,76 @@ public class MainActivity extends AppCompatActivity {
     // 处理菜单点击事件
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == R.id.action_settings) {
+
+        int id = item.getItemId();
+
+        if (id == R.id.action_settings) {
             // 用户点击了“修改FTP设置”，弹出带有旧配置的对话框
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             showFtpConfigDialog(prefs);
             return true;
         }
+        // 【新增】处理删除菜单
+        else if (id == R.id.action_delete) { // 假设你的 menu_main.xml 中有一个 id 为 action_delete 的 MenuItem
+            deleteSelectedImages();
+            return true;
+        }
+
         return super.onOptionsItemSelected(item);
+
     }
+
+    // 【新增】删除逻辑
+    private void deleteSelectedImages() {
+        List<ImageItem> selectedItems = adapter.getSelectedItems();
+        if (selectedItems.isEmpty()) {
+            Toast.makeText(this, R.string.no_file_selected, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // 数据库和本地文件操作放在子线程执行
+        new Thread(() -> {
+            for (ImageItem item : selectedItems) {
+                // 1. 删除手机本地的缩略图文件
+                String uriString = item.getLocalUri();
+                String absolutePath = uriString.replace("file://", "");
+                File file = new File(absolutePath);
+                if (file.exists()) {
+                    file.delete();
+                }
+
+                // 2. 【修改】不再从数据库删除记录，而是标记为“已删除”
+                database.downloadedFileDao().markAsDeleted(item.getFtpPath());
+            }
+
+            // 3. 回到主线程刷新 UI
+            runOnUiThread(() -> {
+                ImageAdapter.LoadedImageItems.removeAll(selectedItems);
+                adapter.notifyDataSetChanged();
+                adapter.clearSelection();
+                Toast.makeText(MainActivity.this, MessageFormat.format(getString(R.string.deleted),selectedItems.size()), Toast.LENGTH_SHORT).show();
+            });
+
+        }).start();
+
+    }
+
+    // 【新增】供 Adapter 回调的方法
+    public void onItemLongSelected() {
+        // 这里可以开启一个 ActionMode (上下文菜单栏)，或者只是简单的 Toast 提示
+        // 为了简单，我们只是更新菜单状态或者 Toast
+        // 如果你有 "删除" 菜单项，可以在这里让它变得可见
+        // invalidateOptionsMenu();
+        // 或者弹个 Toast
+        Toast.makeText(this, R.string.select_file, Toast.LENGTH_SHORT).show();
+    }
+
+    public void onSelectionFinished() {
+        // 退出选择模式后的清理工作
+        // 如果你有改变菜单项，这里恢复
+        // invalidateOptionsMenu();
+    }
+
+
 
 
     /**
@@ -341,7 +405,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             } else {
                 // 用户拒绝了，给个提示
-                Toast.makeText(this, "需要存储权限才能显示图片", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.no_permission, Toast.LENGTH_SHORT).show();
             }
         }
     }

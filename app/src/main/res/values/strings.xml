@@ -8,4 +8,24 @@
     <string name="save">Save</string>
     <string name="ftp_set">FTP Server Setting</string>
     <string name="cancel">Cancel</string>
+    <string name="no_need_sync">Sync again in {0} days</string>
+    <string name="connecting">Connecting</string>
+    <string name="failed_to_connect">Failed to connect</string>
+    <string name="loading_file_list">Loading file list from FTP</string>
+    <string name="failed_to_load_list">Failed to list</string>
+    <string name="x_files_to_download">{0} files to download</string>
+    <string name="downloading">Downloading {0}/{1}:{2}</string>
+    <string name="sync_done">{0} files downloaded</string>
+    <string name="no_file_selected">Please select a file</string>
+    <string name="deleted">{0} files deleted</string>
+    <string name="select_file">Select file</string>
+    <string name="no_permission">Permission rejected</string>
+    <string name="ftp_setting">FTP server setting</string>
+    <string name="delete_local_file">Delete Local Files</string>
+    <string name="ftp_name">FTP server (e.g. 192.168.0.1)</string>
+    <string name="ftp_port">FTP server port, 21 is default port (e.g. 21)</string>
+    <string name="user_name">User name (e.g. Anonymous)</string>
+    <string name="password">Password</string>
+    <string name="base_path">The root path containing images (e.g. / or /photos/summer/)</string>
+    <string name="passiv_mode">Enable Passive Mode (always enable)</string>
 </resources>

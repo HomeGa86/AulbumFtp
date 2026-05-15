@@ -8,4 +8,24 @@
     <string name="save">保存</string>
     <string name="ftp_set">配置FTP服务器信息</string>
     <string name="cancel">取消</string>
+    <string name="no_need_sync">{0}天后再下载</string>
+    <string name="connecting">连接FTP服务器...</string>
+    <string name="failed_to_connect">连接失败</string>
+    <string name="loading_file_list">正在从FTP读取文件列表</string>
+    <string name="failed_to_load_list">读取列表失败</string>
+    <string name="x_files_to_download">{0}新文件</string>
+    <string name="downloading">正在下载{0}/{1}:{2}</string>
+    <string name="sync_done">{0}文件下载成功</string>
+    <string name="no_file_selected">请选择一个文件</string>
+    <string name="deleted">删除了{0}个文件</string>
+    <string name="select_file">选择文件</string>
+    <string name="no_permission">无权限发送下载进度通知</string>
+    <string name="ftp_setting">设置FTP服务器</string>
+    <string name="delete_local_file">删除本地文件</string>
+    <string name="ftp_name">FTP服务器地址(比如192.168.0.1)</string>
+    <string name="ftp_port">FTP服务器端口号(默认是21)</string>
+    <string name="user_name">用户名(比如Anonymous)</string>
+    <string name="password">密码</string>
+    <string name="base_path">存储图片文件的路径(比如 / 或者 /photos/summer/)</string>
+    <string name="passiv_mode">是否开启被动模式(目前支持被动模式)</string>
 </resources>
