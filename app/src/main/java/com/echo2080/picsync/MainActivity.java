@@ -242,6 +242,7 @@ public class MainActivity extends AppCompatActivity {
     // 【新增】删除逻辑
     private void deleteSelectedImages() {
         List<ImageItem> selectedItems = adapter.getSelectedItems();
+        Log.d("deleteSelectedImages", "start");
         if (selectedItems.isEmpty()) {
             Toast.makeText(this, R.string.no_file_selected, Toast.LENGTH_SHORT).show();
             return;
@@ -249,13 +250,20 @@ public class MainActivity extends AppCompatActivity {
         // 数据库和本地文件操作放在子线程执行
         new Thread(() -> {
             for (ImageItem item : selectedItems) {
+                Log.d("deleteSelectedImages", "Thread started");
                 // 1. 删除手机本地的缩略图文件
                 String uriString = item.getLocalUri();
-                String absolutePath = uriString.replace("file://", "");
+                String absolutePath = Uri.parse(uriString).getPath();
+				Log.d("deleteSelectedImages", "absolutePath:" + absolutePath);
                 File file = new File(absolutePath);
                 if (file.exists()) {
                     file.delete();
+					Log.d("deleteSelectedImages", "file deleted" + uriString);
                 }
+				else
+				{
+					Log.d("deleteSelectedImages", "file not existing:" + uriString);
+				}
 
                 // 2. 【修改】不再从数据库删除记录，而是标记为“已删除”
                 database.downloadedFileDao().markAsDeleted(item.getFtpPath());
