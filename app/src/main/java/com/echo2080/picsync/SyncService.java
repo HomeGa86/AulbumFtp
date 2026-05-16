@@ -21,10 +21,16 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.text.MessageFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -109,7 +115,7 @@ public class SyncService extends Service {
             long daysRemaining = (FULL_SYNC_INTERVAL_MS - (currentTime - lastFullSyncTime)) / (24 * 60 * 60 * 1000);
             String skipMsg = "上次完全同步成功在10天内，跳过本次FTP遍历。剩余免打扰天数: " + daysRemaining;
             Log.d(TAG, skipMsg);
-            updateNotification(MessageFormat.format(getString(R.string.no_need_sync),String.valueOf(daysRemaining)));
+            updateNotification(MessageFormat.format(getString(R.string.no_need_sync), String.valueOf(daysRemaining)));
             isRunning.set(false);
             return;
         }
@@ -131,6 +137,11 @@ public class SyncService extends Service {
         SharedPreferences appPrefs = this.getSharedPreferences("AppSettings", MODE_PRIVATE);
         String basePath = appPrefs.getString("ftp_base_path", "/");
 
+        if (!basePath.isEmpty() && !basePath.endsWith("/")) {
+            basePath += "/";
+        }
+
+
         List<String> allRemoteFiles = new ArrayList<>();
         updateNotification(getString(R.string.loading_file_list));
         try {
@@ -150,12 +161,19 @@ public class SyncService extends Service {
             }
         }
         Log.d(TAG, "需要下载 " + newFiles.size() + " 个新文件");
-        updateNotification(MessageFormat.format(getString(R.string.x_files_to_download),newFiles.size()));
+        updateNotification(MessageFormat.format(getString(R.string.x_files_to_download), newFiles.size()));
 
-        // 6. 逐个下载
+        // 6. 准备失败日志文件
+        File failLogDir = new File(getCacheDir(), "sync_logs");
+        if (!failLogDir.exists()) failLogDir.mkdirs();
+        String logFileName = "sync_fail_log_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date()) + ".txt";
+        File failLogFile = new File(failLogDir, logFileName);
+
         int total = newFiles.size();
         int current = 0;
         int successCount = 0;
+        int failedToProcessCount = 0;
+        int failedToDownloadCount = 0;
 
         // 如果没有任何新文件需要下载，说明也是“完全成功”的状态
         boolean isFullSuccess = (total == 0);
@@ -164,7 +182,7 @@ public class SyncService extends Service {
             current++;
             String fileName = remotePath.substring(remotePath.lastIndexOf("/") + 1);
 
-            updateNotification(MessageFormat.format(getString(R.string.downloading),current,total,fileName));
+            updateNotification(MessageFormat.format(getString(R.string.downloading), current, total, fileName));
 
             File tempFile = new File(getCacheDir(), "temp_" + fileName);
 
@@ -186,6 +204,7 @@ public class SyncService extends Service {
                     boolean reconnectSuccess = ftpHelper.reconnect(this);
                     if (!reconnectSuccess) {
                         Log.e(TAG, "FTP 重连失败，放弃下载: " + remotePath);
+                        failedToDownloadCount++;
                         break;
                     }
                 }
@@ -195,13 +214,29 @@ public class SyncService extends Service {
             if (!downloadSuccess) {
                 Log.e(TAG, "多次重试后依然下载失败: " + remotePath);
                 if (tempFile.exists()) tempFile.delete();
-                // 只要有一个文件最终下载失败，就不能算作“完全成功”
+                // 记录失败日志
+                try (FileWriter fw = new FileWriter(failLogFile, true);
+                     BufferedWriter bw = new BufferedWriter(fw)) {
+                    bw.write("FTP路径: " + remotePath + " | 失败原因: 下载失败（多次重试后无法获取文件）");
+                    bw.newLine();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
                 continue;
             }
 
-            if (tempFile.length() < 1024) {
+            if (tempFile.length() < 2) {
                 Log.e(TAG, "文件过小，判定为下载不完整，删除: " + tempFile.getName());
                 tempFile.delete();
+                failedToDownloadCount++;
+                // 记录失败日志
+                try (FileWriter fw = new FileWriter(failLogFile, true);
+                     BufferedWriter bw = new BufferedWriter(fw)) {
+                    bw.write("FTP路径: " + remotePath + " | 失败原因: 下载失败（文件过小或不完整）");
+                    bw.newLine();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
                 continue;
             }
 
@@ -212,6 +247,15 @@ public class SyncService extends Service {
             if (checkOptions.outWidth <= 0 || checkOptions.outHeight <= 0) {
                 Log.e(TAG, "文件解码边界失败，判定为损坏，删除: " + tempFile.getName());
                 tempFile.delete();
+                failedToProcessCount++;
+                // 记录失败日志
+                try (FileWriter fw = new FileWriter(failLogFile, true);
+                     BufferedWriter bw = new BufferedWriter(fw)) {
+                    bw.write("FTP路径: " + remotePath + " | 失败原因: 解析失败（文件损坏或格式不支持）");
+                    bw.newLine();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
                 continue;
             }
 
@@ -235,6 +279,15 @@ public class SyncService extends Service {
             if (thumbnailPath == null) {
                 Log.e(TAG, "生成缩略图失败: " + remotePath);
                 tempFile.delete();
+                failedToProcessCount++;
+                // 记录失败日志
+                try (FileWriter fw = new FileWriter(failLogFile, true);
+                     BufferedWriter bw = new BufferedWriter(fw)) {
+                    bw.write("FTP路径: " + remotePath + " | 失败原因: 创建缩略图失败");
+                    bw.newLine();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
                 continue;
             }
 
@@ -254,7 +307,6 @@ public class SyncService extends Service {
         }
 
         // 7. 判定本次同步是否“完全成功”
-        // 条件：需要下载的文件总数 > 0 且 实际成功下载数 == 需要下载的文件总数
         if (total > 0 && successCount == total) {
             isFullSuccess = true;
         }
@@ -264,23 +316,36 @@ public class SyncService extends Service {
             SharedPreferences.Editor editor = prefs.edit();
             editor.putLong(KEY_LAST_FULL_SYNC_TIME, System.currentTimeMillis());
             editor.apply();
+            String resultMsg = "同步完成，共下载 " + successCount + " 张新图片";
+            updateNotification(MessageFormat.format(getString(R.string.sync_done), successCount));
+            Log.d(TAG, resultMsg);
             Log.d(TAG, "本次同步完全成功，已记录时间戳，未来10天将跳过FTP遍历。");
         } else {
             Log.d(TAG, "本次同步存在失败或跳过的文件，不记录完全成功时间戳，下次将继续尝试。");
+            updateNotification(MessageFormat.format(getString(R.string.part_done), failedToDownloadCount, failedToProcessCount));
         }
 
-        // 9. 断开 FTP 连接
+        // 9. 上传失败日志文件到 FTP（如果有失败记录）
+        if (failLogFile.exists() && failLogFile.length() > 0) {
+            updateNotification("正在上传失败日志文件...");
+            // 假设你想把日志文件上传到FTP的根目录或特定日志目录，这里以根目录为例
+            String remoteLogPath = basePath + "sync_logs/" + logFileName;
+            boolean uploadSuccess = ftpHelper.uploadFile(remoteLogPath, failLogFile);
+            if (uploadSuccess) {
+                Log.d(TAG, "失败日志文件已成功上传到FTP: " + remoteLogPath);
+            } else {
+                Log.e(TAG, "失败日志文件上传到FTP失败: " + remoteLogPath);
+            }
+        }
+
+        // 10. 断开 FTP 连接
         ftpHelper.disconnect();
 
-        // 10. 更新通知
-        String resultMsg = "同步完成，共下载 " + successCount + " 张新图片";
-        updateNotification(MessageFormat.format(getString(R.string.sync_done),successCount));
-        Log.d(TAG, resultMsg);
-
+        // 11. 更新通知与结束状态
         isRunning.set(false);
 
         if (successCount > 0) {
-            Intent intent = new Intent("com.echo2080.ppicsync.REFRESH_IMAGES");
+            Intent intent = new Intent("com.echo2080.picsync.REFRESH_IMAGES");
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         }
     }

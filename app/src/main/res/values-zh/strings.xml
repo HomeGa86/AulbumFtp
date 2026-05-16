@@ -28,4 +28,5 @@
     <string name="password">密码</string>
     <string name="base_path">存储图片文件的路径(比如 / 或者 /photos/summer/)</string>
     <string name="passiv_mode">是否开启被动模式(目前支持被动模式)</string>
+    <string name="part_done">部分成功,{0}未下载,{1}处理失败</string>
 </resources>
