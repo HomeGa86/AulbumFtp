@@ -8,7 +8,9 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -17,12 +19,14 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.text.MessageFormat;
@@ -31,7 +35,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,10 +45,8 @@ public class SyncService extends Service {
     private static final String CHANNEL_ID = "sync_channel";
     private static final int NOTIFICATION_ID = 1;
 
-    // 新增：用于存储同步状态的 SharedPreferences 键名
     private static final String PREFS_NAME = "SyncServicePrefs";
     private static final String KEY_LAST_FULL_SYNC_TIME = "last_full_sync_time";
-    // 10天的毫秒数 (10 * 24 * 60 * 60 * 1000)
     private static final long FULL_SYNC_INTERVAL_MS = 10 * 24 * 60 * 60 * 1000L;
 
     private AppDatabase database;
@@ -54,17 +55,15 @@ public class SyncService extends Service {
     private Handler mainHandler;
     private AtomicBoolean isRunning = new AtomicBoolean(false);
 
-    // 缩略图保存目录
     private File thumbnailDir;
 
     public static void resetFullSyncTimestamp(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
-        editor.putLong(KEY_LAST_FULL_SYNC_TIME, 0L); // 重置为0
+        editor.putLong(KEY_LAST_FULL_SYNC_TIME, 0L);
         editor.apply();
         Log.d(TAG, "FTP配置已变更，已重置完全同步时间戳，下次将强制执行同步。");
     }
-
 
     @Override
     public void onCreate() {
@@ -74,7 +73,6 @@ public class SyncService extends Service {
         executor = Executors.newSingleThreadExecutor();
         mainHandler = new Handler(Looper.getMainLooper());
 
-        // 创建缩略图目录
         thumbnailDir = new File(getExternalFilesDir(Environment.DIRECTORY_PICTURES), "thumbnails");
         if (!thumbnailDir.exists()) {
             thumbnailDir.mkdirs();
@@ -93,9 +91,8 @@ public class SyncService extends Service {
 
         executor.execute(() -> {
             try {
-                syncAllImages();
+                syncAllFiles(); // ⬅️ 内部改为通用的多媒体同步
             } finally {
-                // 无论同步成功还是失败，执行完后必须关闭服务！
                 mainHandler.post(this::stopSelf);
             }
         });
@@ -108,10 +105,9 @@ public class SyncService extends Service {
         return null;
     }
 
-    private void syncAllImages() {
+    private void syncAllFiles() {
         isRunning.set(true);
 
-        // 1. 检查是否在10天免打扰期内
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         long lastFullSyncTime = prefs.getLong(KEY_LAST_FULL_SYNC_TIME, 0L);
         long currentTime = System.currentTimeMillis();
@@ -120,6 +116,7 @@ public class SyncService extends Service {
             long daysRemaining = (FULL_SYNC_INTERVAL_MS - (currentTime - lastFullSyncTime)) / (24 * 60 * 60 * 1000);
             String skipMsg = "上次完全同步成功在10天内，跳过本次FTP遍历。剩余免打扰天数: " + daysRemaining;
             Log.d(TAG, skipMsg);
+            // 确保资源存在
             updateNotification(MessageFormat.format(getString(R.string.no_need_sync), String.valueOf(daysRemaining)));
             isRunning.set(false);
             return;
@@ -127,7 +124,6 @@ public class SyncService extends Service {
 
         updateNotification(getString(R.string.connecting));
 
-        // 2. 连接 FTP
         if (!ftpHelper.connect(this)) {
             Log.e(TAG, "FTP 连接失败");
             updateNotification(getString(R.string.failed_to_connect));
@@ -135,17 +131,14 @@ public class SyncService extends Service {
             return;
         }
 
-        // 3. 获取所有已下载的文件路径（用于去重）
         List<String> downloadedPaths = database.downloadedFileDao().getAllDownloadedPaths();
 
-        // 4. 遍历 FTP 获取所有图片文件
         SharedPreferences appPrefs = this.getSharedPreferences("AppSettings", MODE_PRIVATE);
         String basePath = appPrefs.getString("ftp_base_path", "/");
 
         if (!basePath.isEmpty() && !basePath.endsWith("/")) {
             basePath += "/";
         }
-
 
         List<String> allRemoteFiles = new ArrayList<>();
         updateNotification(getString(R.string.loading_file_list));
@@ -157,8 +150,8 @@ public class SyncService extends Service {
             return;
         }
 
-        Log.d(TAG, "FTP 上共有 " + allRemoteFiles.size() + " 个图片文件");
-        // 5. 过滤出未下载的文件
+        Log.d(TAG, "FTP 上共有 " + allRemoteFiles.size() + " 个文件");
+
         List<String> newFiles = new ArrayList<>();
         for (String remotePath : allRemoteFiles) {
             if (!downloadedPaths.contains(remotePath)) {
@@ -168,7 +161,6 @@ public class SyncService extends Service {
         Log.d(TAG, "需要下载 " + newFiles.size() + " 个新文件");
         updateNotification(MessageFormat.format(getString(R.string.x_files_to_download), newFiles.size()));
 
-        // 6. 准备失败日志文件
         File failLogDir = new File(getCacheDir(), "sync_logs");
         if (!failLogDir.exists()) failLogDir.mkdirs();
         String logFileName = "sync_fail_log_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date()) + ".txt";
@@ -180,7 +172,6 @@ public class SyncService extends Service {
         int failedToProcessCount = 0;
         int failedToDownloadCount = 0;
 
-        // 如果没有任何新文件需要下载，说明也是“完全成功”的状态
         boolean isFullSuccess = (total == 0);
 
         for (String remotePath : newFiles) {
@@ -219,14 +210,7 @@ public class SyncService extends Service {
             if (!downloadSuccess) {
                 Log.e(TAG, "多次重试后依然下载失败: " + remotePath);
                 if (tempFile.exists()) tempFile.delete();
-                // 记录失败日志
-                try (FileWriter fw = new FileWriter(failLogFile, true);
-                     BufferedWriter bw = new BufferedWriter(fw)) {
-                    bw.write("FTP路径: " + remotePath + " | 失败原因: 下载失败（多次重试后无法获取文件）");
-                    bw.newLine();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+                logFailure(failLogFile, remotePath, "下载失败（多次重试后无法获取文件）");
                 continue;
             }
 
@@ -234,119 +218,119 @@ public class SyncService extends Service {
                 Log.e(TAG, "文件过小，判定为下载不完整，删除: " + tempFile.getName());
                 tempFile.delete();
                 failedToDownloadCount++;
-                // 记录失败日志
-                try (FileWriter fw = new FileWriter(failLogFile, true);
-                     BufferedWriter bw = new BufferedWriter(fw)) {
-                    bw.write("FTP路径: " + remotePath + " | 失败原因: 下载失败（文件过小或不完整）");
-                    bw.newLine();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+                logFailure(failLogFile, remotePath, "下载失败（文件过小或不完整）");
                 continue;
             }
 
-            BitmapFactory.Options checkOptions = new BitmapFactory.Options();
-            checkOptions.inJustDecodeBounds = true;
-            BitmapFactory.decodeFile(tempFile.getAbsolutePath(), checkOptions);
+            // ⬅️ 新增：根据后缀名判断文件类型
+            FileType fileType = getFileTypeByExtension(fileName);
+            long captureTime = tempFile.lastModified();
+            boolean parseSuccess = false;
 
-            if (checkOptions.outWidth <= 0 || checkOptions.outHeight <= 0) {
-                Log.e(TAG, "文件解码边界失败，判定为损坏，删除: " + tempFile.getName());
-                tempFile.delete();
-                failedToProcessCount++;
-                // 记录失败日志
-                try (FileWriter fw = new FileWriter(failLogFile, true);
-                     BufferedWriter bw = new BufferedWriter(fw)) {
-                    bw.write("FTP路径: " + remotePath + " | 失败原因: 解析失败（文件损坏或格式不支持）");
-                    bw.newLine();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                continue;
-            }
-
-            String relativePath = remotePath;
-            if (relativePath.startsWith("/")) {
-                relativePath = relativePath.substring(1);
-            }
-            String thumbnailRelativePath = relativePath.substring(0, relativePath.lastIndexOf('.'))
-                    + "_thumb.jpg";
+            String relativePath = remotePath.startsWith("/") ? remotePath.substring(1) : remotePath;
+            String thumbnailRelativePath = relativePath.substring(0, relativePath.lastIndexOf('.')) + "_thumb.jpg";
             File thumbnailFile = new File(thumbnailDir, thumbnailRelativePath);
-
             File parentDir = thumbnailFile.getParentFile();
             if (!parentDir.exists()) {
                 parentDir.mkdirs();
             }
 
-            String thumbnailPath = ThumbnailHelper.createAndSaveThumbnail(
-                    tempFile, thumbnailFile
-            );
+            String thumbnailPath = null;
 
-            if (thumbnailPath == null) {
-                Log.e(TAG, "生成缩略图失败: " + remotePath);
-                tempFile.delete();
-                failedToProcessCount++;
-                // 记录失败日志
-                try (FileWriter fw = new FileWriter(failLogFile, true);
-                     BufferedWriter bw = new BufferedWriter(fw)) {
-                    bw.write("FTP路径: " + remotePath + " | 失败原因: 创建缩略图失败");
-                    bw.newLine();
-                } catch (IOException e) {
-                    e.printStackTrace();
+            if (fileType == FileType.VIDEO) {
+                // 🎬 视频流处理分支
+                MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+                try {
+                    retriever.setDataSource(tempFile.getAbsolutePath());
+                    String width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+                    String height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+
+                    if (width != null && height != null && Integer.parseInt(width) > 0 && Integer.parseInt(height) > 0) {
+                        parseSuccess = true;
+
+                        // ⬅️【关键改动】：调用我们写的方法，精准获取视频的拍摄时间
+                        captureTime = ThumbnailHelper.getVideoCaptureTime(tempFile.getAbsolutePath(), fileName);
+
+                        // 提取第一帧作为微缩图
+                        Bitmap videoFrame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                        if (videoFrame != null) {
+                            // 将视频首帧压缩并保存到本地缩略图目录
+                            try (FileOutputStream fos = new FileOutputStream(thumbnailFile)) {
+                                videoFrame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                                thumbnailPath = thumbnailFile.getAbsolutePath();
+                            }
+                            videoFrame.recycle();
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "解析视频或提取首帧失败: " + fileName, e);
+                } finally {
+                    try { retriever.release(); } catch (IOException ignored) {}
                 }
+            } else {
+                // 🖼️ 图片流处理分支
+                BitmapFactory.Options checkOptions = new BitmapFactory.Options();
+                checkOptions.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(tempFile.getAbsolutePath(), checkOptions);
+
+                if (checkOptions.outWidth > 0 && checkOptions.outHeight > 0) {
+                    parseSuccess = true;
+                    thumbnailPath = ThumbnailHelper.createAndSaveThumbnail(tempFile, thumbnailFile);
+                    if (thumbnailPath != null) {
+                        ThumbnailHelper.ExifInfo exifInfo = ThumbnailHelper.copyExifInfo(tempFile, thumbnailFile);
+                        if (exifInfo != null && exifInfo.captureTime > 0) {
+                            captureTime = exifInfo.captureTime;
+                        }
+                    }
+                }
+            }
+
+            // 校验解析与缩略图是否生成成功
+            if (!parseSuccess || thumbnailPath == null) {
+                Log.e(TAG, "解析文件或生成缩略图失败: " + remotePath);
+                tempFile.delete(); // 清理残留空间
+                failedToProcessCount++;
+                logFailure(failLogFile, remotePath, "解析失败（文件损坏、格式不支持或生成缩略图失败）");
                 continue;
             }
 
-            ThumbnailHelper.ExifInfo exifInfo = ThumbnailHelper.copyExifInfo(tempFile, thumbnailFile);
-
+            // 💾 成功后持久化数据到本地 Room
             String localUri = Uri.fromFile(new File(thumbnailPath)).toString();
             database.imageFtpDao().insert(new ImageFtpEntity(localUri, remotePath));
 
             database.downloadedFileDao().insert(
-                    new DownloadedFileEntity(remotePath, thumbnailPath, System.currentTimeMillis(), exifInfo.captureTime == 0 ? tempFile.lastModified() : exifInfo.captureTime)
+                    new DownloadedFileEntity(remotePath, thumbnailPath, System.currentTimeMillis(), captureTime, fileType)
             );
 
+            // ✂️ 无论是图片还是大视频，本地临时原始文件一律删除以节省存储空间
             tempFile.delete();
 
             successCount++;
-            Log.d(TAG, "成功下载并生成缩略图: " + remotePath + " -> " + thumbnailPath);
+            Log.d(TAG, "成功同步并生成缩略图[" + fileType + "]: " + remotePath + " -> " + thumbnailPath);
         }
 
-        // 7. 判定本次同步是否“完全成功”
         if (total > 0 && successCount == total) {
             isFullSuccess = true;
         }
 
-        // 8. 如果完全成功，记录当前时间戳
         if (isFullSuccess) {
             SharedPreferences.Editor editor = prefs.edit();
             editor.putLong(KEY_LAST_FULL_SYNC_TIME, System.currentTimeMillis());
             editor.apply();
-            String resultMsg = "同步完成，共下载 " + successCount + " 张新图片";
             updateNotification(MessageFormat.format(getString(R.string.sync_done), successCount));
-            Log.d(TAG, resultMsg);
-            Log.d(TAG, "本次同步完全成功，已记录时间戳，未来10天将跳过FTP遍历。");
+            Log.d(TAG, "本次同步完全成功，未来10天将跳过FTP遍历。");
         } else {
-            Log.d(TAG, "本次同步存在失败或跳过的文件，不记录完全成功时间戳，下次将继续尝试。");
+            Log.d(TAG, "本次同步存在失败文件，不记录完全成功时间戳。");
             updateNotification(MessageFormat.format(getString(R.string.part_done), failedToDownloadCount, failedToProcessCount));
         }
 
-        // 9. 上传失败日志文件到 FTP（如果有失败记录）
         if (failLogFile.exists() && failLogFile.length() > 0) {
             updateNotification("正在上传失败日志文件...");
-            // 假设你想把日志文件上传到FTP的根目录或特定日志目录，这里以根目录为例
             String remoteLogPath = basePath + "sync_logs/" + logFileName;
-            boolean uploadSuccess = ftpHelper.uploadFile(remoteLogPath, failLogFile);
-            if (uploadSuccess) {
-                Log.d(TAG, "失败日志文件已成功上传到FTP: " + remoteLogPath);
-            } else {
-                Log.e(TAG, "失败日志文件上传到FTP失败: " + remoteLogPath);
-            }
+            ftpHelper.uploadFile(remoteLogPath, failLogFile);
         }
 
-        // 10. 断开 FTP 连接
         ftpHelper.disconnect();
-
-        // 11. 更新通知与结束状态
         isRunning.set(false);
 
         if (successCount > 0) {
@@ -355,15 +339,37 @@ public class SyncService extends Service {
         }
     }
 
-    // 以下方法保持不变...
+    // 辅助工具方法：根据后缀名映射到文件类型枚举
+    private FileType getFileTypeByExtension(String fileName) {
+        if (fileName == null) return FileType.OTHER;
+        String lowerName = fileName.toLowerCase();
+        if (lowerName.endsWith(".mp4") || lowerName.endsWith(".mkv") || lowerName.endsWith(".mov") || lowerName.endsWith(".avi") || lowerName.endsWith(".3gp")) {
+            return FileType.VIDEO;
+        } else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || lowerName.endsWith(".png") || lowerName.endsWith(".webp") || lowerName.endsWith(".gif")) {
+            return FileType.PICTURE;
+        }
+        return FileType.OTHER;
+    }
+
+    // 提取的日志记录辅助方法
+    private void logFailure(File logFile, String remotePath, String reason) {
+        try (FileWriter fw = new FileWriter(logFile, true);
+             BufferedWriter bw = new BufferedWriter(fw)) {
+            bw.write("FTP路径: " + remotePath + " | 失败原因: " + reason);
+            bw.newLine();
+        } catch (IOException e) {
+            Log.e(TAG, "写入失败日志出错", e);
+        }
+    }
+
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "图片同步服务",
+                    "多媒体同步服务",
                     NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("用于显示图片同步进度");
+            channel.setDescription("用于显示媒体数据同步进度");
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 manager.createNotificationChannel(channel);

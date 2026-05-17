@@ -26,6 +26,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import android.media.ExifInterface;
+import java.text.ParseException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import android.media.MediaMetadataRetriever;
+
 
 
 public class ThumbnailHelper {
@@ -189,6 +194,77 @@ public class ThumbnailHelper {
 
         // 返回解析好的数据对象
         return new ExifInfo(captureTime, latitude, longitude);
+    }
+
+    /**
+     * 尝试从视频元数据或文件名中提取拍摄/录制时间戳
+     * @param videoFilePath 本地临时视频文件路径
+     * @param fileName 原始文件名（用于正则解析）
+     * @return 毫秒级时间戳，如果完全无法获取则返回文件最后的修改时间
+     */
+    public static long getVideoCaptureTime(String videoFilePath, String fileName) {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        try {
+            retriever.setDataSource(videoFilePath);
+            // 1. 尝试从元数据中获取录制时间 (通常格式为 "20260517T093045.000Z" 或 "Sun May 17 09:30:45 2026")
+            String dateString = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE);
+            if (dateString != null && !dateString.isEmpty()) {
+                Log.d(TAG, "从视频元数据提取到时间字符串: " + dateString);
+
+                // 尝试将其转换为标准的毫秒时间戳
+                // 注：因不同设备写入格式不同，这里可以用常见的几种格式尝试解析
+                SimpleDateFormat sdfUtc = new SimpleDateFormat("yyyyMMdd'T'HHmmss", Locale.getDefault());
+                try {
+                    // 如果是含有 T 的 ISO 格式
+                    if (dateString.contains("T")) {
+                        Date date = sdfUtc.parse(dateString.substring(0, 15));
+                        if (date != null) return date.getTime();
+                    } else {
+                        // 如果是其他常见标准格式，直接尝试让 Date 对象解析（处理 Fri May 15 等标准格式）
+                        Date date = new Date(dateString);
+                        return date.getTime();
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "元数据时间字符串解析失败，准备切换到文件名解析: " + dateString);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "读取视频元数据失败", e);
+        } finally {
+            try { retriever.release(); } catch (IOException ignored) {}
+        }
+
+        // 2. 防御性容错：如果元数据没有，尝试通过正则表达式从文件名中匹配时间（例如 VID_20260517_123456.mp4）
+        if (fileName != null) {
+            Pattern pattern = Pattern.compile("(\\d{4})_?(\\d{2})_?(\\d{2})_?(\\d{2})(\\d{2})(\\d{2})");
+            Matcher matcher = pattern.matcher(fileName);
+            if (matcher.find()) {
+                String timeStr = matcher.group(1) + matcher.group(2) + matcher.group(3) + matcher.group(4) + matcher.group(5) + matcher.group(6);
+                SimpleDateFormat parser = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault());
+                try {
+                    Date date = parser.parse(timeStr);
+                    if (date != null) {
+                        Log.d(TAG, "从文件名成功匹配并解析出时间戳: " + fileName);
+                        return date.getTime();
+                    }
+                } catch (ParseException ignored) {}
+            }
+
+            // 针对只有日期的简易匹配 (例如 wp_ss_20260517.mp4)
+            Pattern datePattern = Pattern.compile("(\\d{4})_?(\\d{2})_?(\\d{2})");
+            Matcher dateMatcher = datePattern.matcher(fileName);
+            if (dateMatcher.find()) {
+                String dateStr = dateMatcher.group(1) + dateMatcher.group(2) + dateMatcher.group(3);
+                SimpleDateFormat parser = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
+                try {
+                    Date date = parser.parse(dateStr);
+                    if (date != null) return date.getTime();
+                } catch (ParseException ignored) {}
+            }
+        }
+
+        // 3. 最后的保底方案：返回文件的最后修改时间
+        return new File(videoFilePath).lastModified();
     }
 
     // 辅助方法：将 EXIF 的度分秒格式 (如 "51/1,2/1,3/1") 转换为十进制数字

@@ -10,6 +10,7 @@ public class ImageItem {
     private String localUri;
     private String ftpPath;
     public long captureTime; // 【新增】用来存放图片的拍摄时间戳（毫秒）
+    private FileType fileType = FileType.PICTURE;
 
     // 构造方法：用于创建 Header
     public ImageItem(int type, String text) {
@@ -17,15 +18,14 @@ public class ImageItem {
         this.text = text;
     }
 
-
-
-    public ImageItem(String localUri, String ftpPath,long captureTime) {
+    // 多媒体内容项构造函数
+    public ImageItem(String localUri, String ftpPath, long captureTime, FileType fileType) {
         this.type = TYPE_IMAGE;
         this.localUri = localUri;
         this.ftpPath = ftpPath;
         this.captureTime = captureTime;
+        this.fileType = fileType;
     }
-
     public String getLocalUri() {
         return localUri;
     }
@@ -43,4 +43,6 @@ public class ImageItem {
     public void setFtpPath(String ftpPath) {
         this.ftpPath = ftpPath;
     }
+
+    public FileType getFileType() { return fileType; }
 }

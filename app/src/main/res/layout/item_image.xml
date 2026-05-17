@@ -1,17 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"> <!-- 修复点1: 改为 wrap_content -->
+    android:layout_height="120dp"
+    android:layout_margin="2dp"> <!-- 💡 统一将 margin 移到最外层，确保所有内部遮罩、图标能精准对齐边缘 -->
 
+    <!-- 媒体缩略图（图片或视频首帧） -->
     <ImageView
         android:id="@+id/image_view"
         android:layout_width="match_parent"
-        android:layout_height="120dp"
-    android:layout_margin="2dp"
-    android:scaleType="centerCrop"
-    android:background="#E0E0E0" />
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:background="#E0E0E0" />
 
-    <!-- 新增：选中时的半透明黑色遮罩 -->
+    <!-- 🎬 新增：视频文件专用的播放标识图标（默认隐藏） -->
+    <ImageView
+        android:id="@+id/video_play_icon"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_gravity="center"
+        android:src="@android:drawable/ic_media_play"
+        android:alpha="0.85"
+        android:tint="#FFFFFF"
+        android:visibility="gone" />
+
+    <!-- 选中时的半透明黑色遮罩 -->
     <View
         android:id="@+id/selection_overlay"
         android:layout_width="match_parent"
@@ -19,12 +31,13 @@
         android:background="#88000000"
         android:visibility="gone" />
 
-    <!-- 可选：新增一个对勾图标，让选中状态更明显 -->
+    <!-- 选中状态的对勾图标 -->
     <ImageView
         android:id="@+id/selection_check"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
         android:layout_gravity="end|top"
+        android:layout_margin="4dp"
         android:src="@drawable/ic_check_green"
         android:visibility="gone" />
 </FrameLayout>

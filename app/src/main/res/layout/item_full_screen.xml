@@ -1,12 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#000000"> <!-- 💡 新增：全黑背景，避免大图或视频比例不对时两边露白 -->
 
+    <!-- 用于查看大图，或者在原视频文件未下载完时显示本地的视频首帧缩略图 -->
     <com.github.chrisbanes.photoview.PhotoView
         android:id="@+id/photo_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="fitCenter" />
+        android:scaleType="fitCenter"
+        android:visibility="visible" />
+
+    <!-- 🎬 新增：视频文件原图大文件下载成功后的播放控件（默认隐藏） -->
+    <VideoView
+        android:id="@+id/video_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:visibility="gone" />
 
 </FrameLayout>
