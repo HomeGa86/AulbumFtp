@@ -91,9 +91,14 @@ public class SyncService extends Service {
             return START_STICKY;
         }
 
-        // 在后台线程执行同步任务
-        executor.execute(this::syncAllImages);
-
+        executor.execute(() -> {
+            try {
+                syncAllImages();
+            } finally {
+                // 无论同步成功还是失败，执行完后必须关闭服务！
+                mainHandler.post(this::stopSelf);
+            }
+        });
         return START_STICKY;
     }
 
