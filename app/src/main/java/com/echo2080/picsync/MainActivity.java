@@ -317,17 +317,7 @@ public class MainActivity extends AppCompatActivity {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(syncCompleteReceiver);
     }
 
-
-    // 在 onCreate 的最后，注释掉原来的 startSyncService()，换成这个逻辑
     private void startSyncServiceWithDelay() {
-        // 显示一个加载对话框，告诉用户正在同步
-        // ProgressDialog dialog = new ProgressDialog(this);
-        // dialog.setMessage("正在同步图片...");
-        // dialog.setIndeterminate(true);
-        // dialog.show();
-
-        // 延迟 3 秒后启动服务，并在服务结束后加载图片
-        // 注意：这仅用于演示原理，正式环境请用 BroadcastReceiver
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             // 1. 启动服务
             Intent serviceIntent = new Intent(this, SyncService.class);
