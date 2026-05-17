@@ -123,6 +123,8 @@ public class FullScreenActivity extends AppCompatActivity {
      */
     private boolean downloadFromFtp(String remoteFilePath, File localFile) {
         FTPClient ftpClient = new FTPClient();
+        boolean downloadSuccess = false; // Track actual success state
+
         try {
             ftpClient.connect(host, port);
             int replyCode = ftpClient.getReplyCode();
@@ -138,15 +140,22 @@ public class FullScreenActivity extends AppCompatActivity {
             ftpClient.enterLocalPassiveMode();
             ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
 
-            // 使用完整的远程路径下载
+            // Set timeouts so the app doesn't hang indefinitely on bad networks
+            ftpClient.setConnectTimeout(5000);
+            ftpClient.setDataTimeout(10000);
+
+            // Try-with-resources handles closing the stream automatically
             try (FileOutputStream fos = new FileOutputStream(localFile)) {
-                return ftpClient.retrieveFile(remoteFilePath, fos);
+                downloadSuccess = ftpClient.retrieveFile(remoteFilePath, fos);
             }
+
+            return downloadSuccess;
 
         } catch (Exception e) {
             e.printStackTrace();
             return false;
         } finally {
+            // 1. Clean up FTP Connection
             try {
                 if (ftpClient.isConnected()) {
                     ftpClient.logout();
@@ -154,6 +163,12 @@ public class FullScreenActivity extends AppCompatActivity {
                 }
             } catch (IOException e) {
                 e.printStackTrace();
+            }
+
+            // 2. CRITICAL FIX: If download failed or threw exception, delete the broken file
+            if (!downloadSuccess && localFile.exists()) {
+                boolean deleted = localFile.delete();
+                Log.d("FTP_DOWNLOAD", "Cleaned up failed/incomplete file: " + deleted);
             }
         }
     }
