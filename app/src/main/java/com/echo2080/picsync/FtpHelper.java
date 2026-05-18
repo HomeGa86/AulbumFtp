@@ -12,6 +12,7 @@ import org.apache.commons.net.ftp.FTPReply;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 
 import static android.content.Context.MODE_PRIVATE;
@@ -105,7 +106,8 @@ public class FtpHelper {
                 // 只处理图片文件
                 String name = file.getName().toLowerCase();
                 if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
-                        || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp")) {
+                        || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp") || name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".mov")
+                        || name.endsWith(".avi") || name.endsWith(".3gp")) {
                     fileList.add(fullPath);
                 }
             }
@@ -169,6 +171,7 @@ public class FtpHelper {
             return false;
         }
     }
+
 
     /**
      * 递归创建远程目录

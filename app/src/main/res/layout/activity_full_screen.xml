@@ -9,4 +9,17 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- 下载进度条 -->
+    <!-- style="?android:attr/progressBarStyleHorizontal" 表示水平样式，适合显示百分比 -->
+    <ProgressBar
+        android:id="@+id/download_progress_bar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+    android:layout_margin="16dp"
+    android:progressTint="#FFEB3B"
+    android:backgroundTint="#4CAF50"
+    android:visibility="gone" />
+
 </FrameLayout>

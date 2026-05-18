@@ -405,6 +405,5 @@ public class SyncService extends Service {
         if (executor != null && !executor.isShutdown()) {
             executor.shutdown();
         }
-        ftpHelper.disconnect();
     }
 }
