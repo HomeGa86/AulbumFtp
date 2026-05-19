@@ -45,12 +45,12 @@ public class SyncService extends Service {
     private static final String CHANNEL_ID = "sync_channel";
     private static final int NOTIFICATION_ID = 1;
 
-    private static final String PREFS_NAME = "SyncServicePrefs";
+    private static final String PREFS_NAME = "AppSettings";
     private static final String KEY_LAST_FULL_SYNC_TIME = "last_full_sync_time";
     private static final long FULL_SYNC_INTERVAL_MS = 10 * 24 * 60 * 60 * 1000L;
 
     private AppDatabase database;
-    private FtpHelper ftpHelper;
+    private FtpInterface ftpHelper;
     private ExecutorService executor;
     private Handler mainHandler;
     private AtomicBoolean isRunning = new AtomicBoolean(false);
@@ -69,7 +69,17 @@ public class SyncService extends Service {
     public void onCreate() {
         super.onCreate();
         database = AppDatabase.getInstance(this);
-        ftpHelper = new FtpHelper();
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        Boolean isSftp = prefs.getBoolean("is_sftp", false);
+        if(isSftp)
+        {
+            ftpHelper = new SftpHelper();
+        }
+        else
+        {
+            ftpHelper = new FtpHelper();
+        }
+
         executor = Executors.newSingleThreadExecutor();
         mainHandler = new Handler(Looper.getMainLooper());
 

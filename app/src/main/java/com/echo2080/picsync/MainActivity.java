@@ -1,13 +1,11 @@
 package com.echo2080.picsync;
 
-import android.Manifest;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -25,8 +23,6 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.Observer;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
@@ -105,7 +101,7 @@ public class MainActivity extends AppCompatActivity {
         String oldUser = prefs.getString("ftp_user", "anonymous");
         String oldPass = prefs.getString("ftp_pass", "");
         String oldBasePath = prefs.getString("ftp_base_path", "/");
-        Boolean oldPassive = prefs.getBoolean("ftp_passive", true);
+        Boolean isSftp = prefs.getBoolean("is_sftp", false);
 
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_ftp_config, null);
         final EditText etHost = dialogView.findViewById(R.id.et_ftp_host);
@@ -113,14 +109,14 @@ public class MainActivity extends AppCompatActivity {
         final EditText etUser = dialogView.findViewById(R.id.et_ftp_user);
         final EditText etPass = dialogView.findViewById(R.id.et_ftp_pass);
         final EditText etBasePath = dialogView.findViewById(R.id.et_ftp_base_path);
-        final CheckBox cbPassive = dialogView.findViewById(R.id.cb_passive_mode);
+        final CheckBox cbIsSftp = dialogView.findViewById(R.id.cb_is_sftp);
 
         etHost.setText(oldHost != null ? oldHost : "");
         etPort.setText(oldPort != null ? oldPort.toString() : "21");
         etUser.setText(oldUser != null ? oldUser : "");
         etPass.setText(oldPass != null ? oldPass : "");
         etBasePath.setText(oldBasePath != null ? oldBasePath : "/");
-        cbPassive.setChecked(oldPassive != null ? oldPassive : true);
+        cbIsSftp.setChecked(isSftp != null ? isSftp : false);
 
         new AlertDialog.Builder(this)
                 .setTitle(R.string.ftp_set)
@@ -133,7 +129,7 @@ public class MainActivity extends AppCompatActivity {
                     editor.putString("ftp_user", etUser.getText().toString().trim());
                     editor.putString("ftp_pass", etPass.getText().toString().trim());
                     editor.putString("ftp_base_path", etBasePath.getText().toString().trim());
-                    editor.putBoolean("ftp_passive", cbPassive.isChecked());
+                    editor.putBoolean("is_sftp", cbIsSftp.isChecked());
                     editor.putBoolean(KEY_IS_FIRST_RUN, false);
                     editor.apply();
 

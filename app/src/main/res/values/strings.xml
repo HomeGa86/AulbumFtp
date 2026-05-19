@@ -27,7 +27,7 @@
     <string name="user_name">User name (e.g. Anonymous)</string>
     <string name="password">Password</string>
     <string name="base_path">The root path containing images (e.g. / or /photos/summer/)</string>
-    <string name="passiv_mode">Enable Passive Mode (always enable)</string>
+    <string name="is_sftp">Is Sftp</string>
     <string name="part_done">Part done. {0} not downloaded, {1} scale failed</string>
     <string name="original_video_loaded">Original video downloaded</string>
 </resources>

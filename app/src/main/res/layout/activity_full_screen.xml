@@ -9,17 +9,33 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- 下载进度条 -->
-    <!-- style="?android:attr/progressBarStyleHorizontal" 表示水平样式，适合显示百分比 -->
-    <ProgressBar
-        android:id="@+id/download_progress_bar"
-        style="?android:attr/progressBarStyleHorizontal"
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-    android:layout_margin="16dp"
-    android:progressTint="#FFEB3B"
-    android:backgroundTint="#4CAF50"
-    android:visibility="gone" />
+        android:layout_margin="16dp"
+        android:visibility="gone"
+        android:id="@+id/progress_container"> <!-- 用一个容器统一控制显隐 -->
 
+        <ProgressBar
+            android:id="@+id/download_progress_bar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:max="100" />
+
+        <TextView
+            android:id="@+id/download_progress_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:shadowColor="#000000"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="2" />
+    </RelativeLayout>
 </FrameLayout>

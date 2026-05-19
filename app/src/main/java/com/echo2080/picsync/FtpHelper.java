@@ -2,6 +2,8 @@ package com.echo2080.picsync;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import org.apache.commons.net.ftp.FTP;
@@ -17,9 +19,12 @@ import java.util.List;
 
 import static android.content.Context.MODE_PRIVATE;
 
-public class FtpHelper {
+public class FtpHelper implements FtpInterface {
 
     private FTPClient ftpClient;
+    // 用于将进度回调切换到主线程执行
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
 
     /**
      * 连接 FTP 服务器
@@ -54,7 +59,6 @@ public class FtpHelper {
         int port = Integer.parseInt(prefs.getString("ftp_port", "21"));
         String user = prefs.getString("ftp_user", "anonymous");
         String password = prefs.getString("ftp_pass", "");
-        String basePath = prefs.getString("ftp_base_path", "/");
         try {
             ftpClient.connect(host, port);
             int replyCode = ftpClient.getReplyCode();
@@ -115,23 +119,102 @@ public class FtpHelper {
     }
 
     /**
-     * 下载文件
+     * 下载文件（无进度监听的基础版本）
      */
     public boolean downloadFile(String remoteFilePath, File localFile) {
+        return downloadFile(remoteFilePath, localFile, null);
+    }
+
+    /**
+     * 下载文件（带实时进度和速度监听）
+     */
+    /**
+     * 下载文件（带实时进度和速度监听）
+     */
+    public boolean downloadFile(String remoteFilePath, File localFile, DownloadProgressListener listener) {
+        boolean downloadSuccess = false;
+        long fileSize = getFileSize(remoteFilePath); // 获取远程文件大小用于计算百分比
+
         try (FileOutputStream fos = new FileOutputStream(localFile)) {
-            return ftpClient.retrieveFile(remoteFilePath, fos);
+            // 获取服务器的输入流
+            InputStream inputStream = ftpClient.retrieveFileStream(remoteFilePath);
+            if (inputStream == null) {
+                return false;
+            }
+
+            byte[] buffer = new byte[8192]; // 8KB 缓冲区
+            int bytesRead;
+            long totalBytesRead = 0;
+            long startTime = System.currentTimeMillis();
+            long lastUpdate = startTime;
+
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
+                totalBytesRead += bytesRead;
+
+                // 每隔 1000 毫秒（1秒）更新一次 UI
+                long currentTime = System.currentTimeMillis();
+                if (currentTime - lastUpdate > 1000 && fileSize > 0) {
+                    long timeElapsed = (currentTime - startTime) / 1000; // 已过去的秒数
+                    if (timeElapsed > 0) {
+                        long speedBytesPerSec = totalBytesRead / timeElapsed; // 平均速度
+
+                        String progressPercent = String.format("%.2f%%", (totalBytesRead * 100.0 / fileSize));
+                        String speed = formatSize(speedBytesPerSec) + "/s";
+                        String statusText = progressPercent + " - " + speed;
+                        int intProgress = (int) ((totalBytesRead * 100L) / fileSize);
+
+                        if (listener != null) {
+                            mainHandler.post(() -> listener.onProgress(intProgress,statusText));
+                        }
+                    }
+                    lastUpdate = currentTime;
+                }
+            }
+
+            // 必须调用 completePendingCommand 来确认传输彻底完成
+            downloadSuccess = ftpClient.completePendingCommand();
+
+            // 确保最后回调一次 100% 的状态
+            if (downloadSuccess && listener != null) {
+                mainHandler.post(() -> listener.onProgress(100,"100.00% - 完成"));
+            }
+
         } catch (IOException e) {
             e.printStackTrace();
-            return false;
+            downloadSuccess = false;
+        } finally {
+            // 💡 修复点：在这里进行 Lambda 引用，此时 downloadSuccess 已经是确定值了
+            if (listener != null) {
+                final boolean isSuccess = downloadSuccess;
+                mainHandler.post(() -> listener.onFinish(isSuccess));
+            }
+
+            // 如果下载失败，删除本地未完成的残次品文件
+            if (!downloadSuccess && localFile.exists()) {
+                localFile.delete();
+            }
+        }
+        return downloadSuccess;
+    }
+
+    /**
+     * 辅助方法：将字节大小格式化为人类可读的字符串 (B, KB, MB, GB)
+     */
+    private String formatSize(long sizeInBytes) {
+        if (sizeInBytes < 1024) {
+            return sizeInBytes + " B";
+        } else if (sizeInBytes < 1024 * 1024) {
+            return String.format("%.2f KB", sizeInBytes / 1024.0);
+        } else if (sizeInBytes < 1024 * 1024 * 1024) {
+            return String.format("%.2f MB", sizeInBytes / (1024.0 * 1024.0));
+        } else {
+            return String.format("%.2f GB", sizeInBytes / (1024.0 * 1024.0 * 1024.0));
         }
     }
 
     /**
      * 上传本地文件到 FTP 服务器（支持自动创建目录）
-     *
-     * @param remoteFilePath FTP 服务器上的目标保存路径（包含文件名，例如：/uploads/2026/05/pic.jpg）
-     * @param localFile      本地要上传的文件对象
-     * @return 是否上传成功
      */
     public boolean uploadFile(String remoteFilePath, File localFile) {
         if (localFile == null || !localFile.exists()) {
@@ -140,27 +223,19 @@ public class FtpHelper {
         }
 
         try {
-            // 1. 获取文件所在的远程目录路径
-            // remoteFilePath 格式如: /dir1/dir2/filename.jpg
             String remoteDirPath = remoteFilePath.substring(0, remoteFilePath.lastIndexOf('/'));
-
-            // 2. 创建远程目录（如果不存在）
             if (!makeDirectory(remoteDirPath)) {
                 Log.d("FtpHelper", "makeDirectory failed");
-                return false; // 创建目录失败
+                return false;
             }
 
-            // 3. 切换工作目录到目标目录
             if (!ftpClient.changeWorkingDirectory(remoteDirPath)) {
                 Log.d("FtpHelper", "changeWorkingDirectory failed");
                 return false;
             }
 
-            // 4. 执行上传
             try (java.io.FileInputStream fis = new java.io.FileInputStream(localFile)) {
-                // 设置文件类型（防止乱码或损坏）
                 ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
-                // 只传文件名，因为工作目录已经切换过去了
                 String fileName = remoteFilePath.substring(remoteFilePath.lastIndexOf('/') + 1);
                 return ftpClient.storeFile(fileName, fis);
             }
@@ -172,27 +247,18 @@ public class FtpHelper {
         }
     }
 
-
     /**
      * 递归创建远程目录
-     *
-     * @param remotePath 远程目录路径，例如 /a/b/c
-     * @return 是否创建成功（或目录已存在）
      */
     private boolean makeDirectory(String remotePath) throws IOException {
         if (remotePath == null || remotePath.isEmpty()) {
             return true;
         }
 
-        // 尝试切换到该目录，如果成功说明目录已存在
         if (ftpClient.changeWorkingDirectory(remotePath)) {
-            // 切换回根目录或其他基准目录，以免影响后续操作（可选，视具体逻辑而定）
-            // ftpClient.changeWorkingDirectory("/");
             return true;
         }
 
-        // 如果目录不存在，尝试创建
-        // 递归逻辑：先创建父目录，再创建当前目录
         String parentPath = remotePath.substring(0, remotePath.lastIndexOf('/'));
         if (!parentPath.isEmpty() && !parentPath.equals(remotePath)) {
             if (!makeDirectory(parentPath)) {
@@ -201,17 +267,14 @@ public class FtpHelper {
             }
         }
 
-        // 创建当前目录
         String dirName = remotePath.substring(remotePath.lastIndexOf('/') + 1);
         if (ftpClient.makeDirectory(dirName)) {
             return true;
         } else {
-            // 再次检查是否创建成功（防止并发情况下其他线程已创建）
             Log.d("FtpHelper", "make current path failed:" + dirName);
             return ftpClient.changeWorkingDirectory(remotePath);
         }
     }
-
 
     /**
      * 获取文件大小
