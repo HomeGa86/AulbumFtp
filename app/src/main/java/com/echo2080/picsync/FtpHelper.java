@@ -24,6 +24,8 @@ public class FtpHelper implements FtpInterface {
     private FTPClient ftpClient;
     // 用于将进度回调切换到主线程执行
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Context context;
+    private LogHelper logHelper;
 
 
     /**
@@ -51,6 +53,7 @@ public class FtpHelper implements FtpInterface {
      * 实际执行连接逻辑的私有方法
      */
     private boolean performConnect(Context context) {
+        logHelper = new LogHelper(context);
         SharedPreferences prefs = context.getSharedPreferences("AppSettings", MODE_PRIVATE);
 
         // 读取主服务器配置
@@ -88,12 +91,15 @@ public class FtpHelper implements FtpInterface {
             ftpClient.connect(host, port);
             int replyCode = ftpClient.getReplyCode();
             if (!FTPReply.isPositiveCompletion(replyCode)) {
+                logHelper.logToFile("Failed to connect to " + host + ":" + port + "@" + user);
+                logHelper.logToFile("FTPReply.isPositiveCompletion is false. replyCode is " + replyCode);
                 disconnect();
                 return false;
             }
 
             boolean loginSuccess = ftpClient.login(user, password);
             if (!loginSuccess) {
+                logHelper.logToFile("Failed to login to " + host + ":" + port + "@" + user + ". Username or Password might be wrong.");
                 disconnect();
                 return false;
             }
@@ -107,6 +113,8 @@ public class FtpHelper implements FtpInterface {
             return true;
 
         } catch (IOException e) {
+            logHelper.logToFile("Failed to connect to " + host + ":" + port + "@" + user);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             e.printStackTrace();
             disconnect(); // 发生异常也要断开清理
             return false;
@@ -172,6 +180,7 @@ public class FtpHelper implements FtpInterface {
             // 获取服务器的输入流
             InputStream inputStream = ftpClient.retrieveFileStream(remoteFilePath);
             if (inputStream == null) {
+                logHelper.logToFile("Failed to download file " + remoteFilePath + " to " + localFile.getAbsolutePath() + ". inputStream is null.");
                 return false;
             }
 
@@ -214,6 +223,8 @@ public class FtpHelper implements FtpInterface {
             }
 
         } catch (IOException e) {
+            logHelper.logToFile("Failed to download file " + remoteFilePath);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             e.printStackTrace();
             downloadSuccess = false;
         } finally {
@@ -251,6 +262,8 @@ public class FtpHelper implements FtpInterface {
      */
     public boolean uploadFile(String remoteFilePath, File localFile) {
         if (localFile == null || !localFile.exists()) {
+            logHelper.logToFile("Failed to uploadFile " + localFile.getAbsolutePath() + " to " + remoteFilePath);
+            logHelper.logToFile("File not existing:" + remoteFilePath);
             Log.d("FtpHelper", "uploadFile not existing:" + localFile.getAbsolutePath());
             return false;
         }
@@ -274,6 +287,8 @@ public class FtpHelper implements FtpInterface {
             }
 
         } catch (IOException e) {
+            logHelper.logToFile("Failed to uploadFile " + localFile.getAbsolutePath() + " to " + remoteFilePath);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             Log.d("FtpHelper", "upload file failed");
             e.printStackTrace();
             return false;
@@ -320,6 +335,8 @@ public class FtpHelper implements FtpInterface {
             }
             return -1;
         } catch (IOException e) {
+            logHelper.logToFile("Failed to getFileSize " + remoteFilePath);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             e.printStackTrace();
             return -1;
         }

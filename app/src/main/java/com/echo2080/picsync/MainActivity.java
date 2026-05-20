@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,6 +19,8 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.ScrollView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -179,8 +182,44 @@ public class MainActivity extends AppCompatActivity {
             deleteSelectedImages();
             return true;
         }
+        else if (id == R.id.action_view_log) {
+            showLogDialog();
+            return true;
+        }
+
         return super.onOptionsItemSelected(item);
     }
+
+    private void showLogDialog() {
+        // 1. 创建 AlertDialog.Builder
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(getString(R.string.view_log));
+
+        // 2. 创建一个 TextView 用于显示文本
+        TextView logTextView = new TextView(this);
+
+        // 3. 调用你已有的工具类获取日志
+        // 注意：这里传入的是 this (即 Activity Context)
+        LogHelper logHelper = new LogHelper(this);
+        String logContent = logHelper.readLogFile(this);
+
+        logTextView.setText(logContent);
+        logTextView.setPadding(50, 30, 30, 30);
+
+        logTextView.setTextColor(Color.BLACK);
+
+        logTextView.setTextSize(12);
+
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.addView(logTextView);
+
+        builder.setView(scrollView);
+
+        builder.setPositiveButton(getString(R.string.close), (dialog, which) -> dialog.dismiss());
+
+        builder.show();
+    }
+
 
     private void deleteSelectedImages() {
         List<ImageItem> selectedItems = adapter.getSelectedItems();

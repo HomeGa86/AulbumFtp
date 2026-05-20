@@ -32,5 +32,7 @@
     <string name="original_video_loaded">视频下载完成</string>
     <string name="backup_ftp_name">备用FTP服务器地址(比如192.168.0.1)</string>
     <string name="backup_ftp_port">备用FTP服务器端口号(默认是21)</string>
+    <string name="view_log">查看日志</string>
+    <string name="close">关闭</string>
 
 </resources>

@@ -32,5 +32,7 @@
     <string name="original_video_loaded">Original video downloaded</string>
     <string name="backup_ftp_name">Backup FTP server (e.g. 192.168.0.1)</string>
     <string name="backup_ftp_port">Backup FTP server port, 21 is default port (e.g. 21)</string>
+    <string name="view_log">View Log</string>
+    <string name="close">Close</string>
 
 </resources>

@@ -28,6 +28,7 @@ public class SftpHelper implements FtpInterface {
     private ChannelSftp channelSftp;
     // 用于将进度回调切换到主线程执行
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private LogHelper logHelper;
 
     /**
      * 连接 SFTP 服务器
@@ -51,6 +52,7 @@ public class SftpHelper implements FtpInterface {
      * 实际执行连接逻辑的私有方法
      */
     private boolean performConnect(Context context) {
+        logHelper = new LogHelper(context);
         SharedPreferences prefs = context.getSharedPreferences("AppSettings", MODE_PRIVATE);
 
         // 读取主服务器配置
@@ -104,7 +106,8 @@ public class SftpHelper implements FtpInterface {
             return true;
 
         } catch (JSchException e) {
-            e.printStackTrace();
+            logHelper.logToFile("Failed to connect to " + host + ":" + port + "@" + user);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             disconnect(); // 发生异常也要断开清理
             return false;
         }
@@ -157,6 +160,8 @@ public class SftpHelper implements FtpInterface {
                 }
             }
         } catch (SftpException e) {
+            logHelper.logToFile("Failed to list files in " + remotePath);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             throw new IOException("Failed to list files in " + remotePath, e);
         }
     }
@@ -230,6 +235,8 @@ public class SftpHelper implements FtpInterface {
             downloadSuccess = true;
 
         } catch (Exception e) {
+            logHelper.logToFile("Failed to download file " + remoteFilePath);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             e.printStackTrace();
             downloadSuccess = false;
         } finally {
@@ -269,6 +276,8 @@ public class SftpHelper implements FtpInterface {
     public boolean uploadFile(String remoteFilePath, File localFile) {
         if (localFile == null || !localFile.exists()) {
             Log.d("SftpHelper", "uploadFile not existing:" + localFile.getAbsolutePath());
+            logHelper.logToFile("Failed to uploadFile " + localFile.getAbsolutePath() + " to " + remoteFilePath);
+            logHelper.logToFile("File not existing:" + remoteFilePath);
             return false;
         }
 
@@ -285,6 +294,8 @@ public class SftpHelper implements FtpInterface {
             }
 
         } catch (Exception e) {
+            logHelper.logToFile("Failed to uploadFile " + localFile.getAbsolutePath() + " to " + remoteFilePath);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             Log.d("SftpHelper", "upload file failed");
             e.printStackTrace();
             return false;
@@ -320,6 +331,8 @@ public class SftpHelper implements FtpInterface {
             channelSftp.mkdir(remotePath);
             return true;
         } catch (SftpException e) {
+            logHelper.logToFile("Failed to create directory: " + remotePath);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             Log.d("SftpHelper", "make current path failed:" + remotePath);
             e.printStackTrace();
             return false;
@@ -337,6 +350,8 @@ public class SftpHelper implements FtpInterface {
             }
             return -1;
         } catch (SftpException e) {
+            logHelper.logToFile("Failed to get file size: " + remoteFilePath);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             e.printStackTrace();
             return -1;
         }

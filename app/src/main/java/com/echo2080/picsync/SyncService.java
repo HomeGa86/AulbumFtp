@@ -48,6 +48,7 @@ public class SyncService extends Service {
     private static final String PREFS_NAME = "AppSettings";
     private static final String KEY_LAST_FULL_SYNC_TIME = "last_full_sync_time";
     private static final long FULL_SYNC_INTERVAL_MS = 10 * 24 * 60 * 60 * 1000L;
+    private LogHelper logHelper;
 
     private AppDatabase database;
     private FtpInterface ftpHelper;
@@ -68,6 +69,7 @@ public class SyncService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        logHelper = new LogHelper(this);
         database = AppDatabase.getInstance(this);
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         Boolean isSftp = prefs.getBoolean("is_sftp", false);
