@@ -35,10 +35,6 @@ public class FullScreenActivity extends AppCompatActivity {
     private File cacheDir;
     private ExecutorService executor = Executors.newSingleThreadExecutor();
     private Handler mainHandler = new Handler(Looper.getMainLooper());
-    private String host;
-    private int port;
-    private String user;
-    private String password;
     private ProgressBar progressBar; // 新增：声明进度条控件
     private TextView progressTextView; // 新增：声明文字控件
     private View progressContainer; // 新增：声明外层容器，方便统一隐藏
@@ -75,10 +71,6 @@ public class FullScreenActivity extends AppCompatActivity {
         viewPager.setCurrentItem(currentPosition, false);
 
         SharedPreferences prefs = this.getSharedPreferences("AppSettings", MODE_PRIVATE);
-        host = prefs.getString("ftp_host", "");
-        port = Integer.parseInt(prefs.getString("ftp_port", "21"));
-        user = prefs.getString("ftp_user", "anonymous");
-        password = prefs.getString("ftp_pass", "");
         isSftp = prefs.getBoolean("is_sftp", false);
 
 

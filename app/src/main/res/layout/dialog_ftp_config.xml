@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent">
+
+    <!-- 2. 内部嵌套一个垂直的 LinearLayout -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="20dp">
 
@@ -45,4 +51,19 @@
         android:text="@string/is_sftp"
         android:checked="true" />
 
+    <EditText
+        android:id="@+id/et_backup_ftp_host"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/backup_ftp_name" />
+
+    <EditText
+        android:id="@+id/et_backup_ftp_port"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/backup_ftp_port"
+        android:inputType="number" />
+
 </LinearLayout>
+
+</ScrollView>

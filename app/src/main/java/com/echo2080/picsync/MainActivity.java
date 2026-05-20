@@ -103,6 +103,9 @@ public class MainActivity extends AppCompatActivity {
         String oldBasePath = prefs.getString("ftp_base_path", "/");
         Boolean isSftp = prefs.getBoolean("is_sftp", false);
 
+        String oldBackupHost = prefs.getString("backup_ftp_host", "");
+        Integer oldBackupPort = Integer.parseInt(prefs.getString("backup_ftp_port", "21"));
+
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_ftp_config, null);
         final EditText etHost = dialogView.findViewById(R.id.et_ftp_host);
         final EditText etPort = dialogView.findViewById(R.id.et_ftp_port);
@@ -110,6 +113,9 @@ public class MainActivity extends AppCompatActivity {
         final EditText etPass = dialogView.findViewById(R.id.et_ftp_pass);
         final EditText etBasePath = dialogView.findViewById(R.id.et_ftp_base_path);
         final CheckBox cbIsSftp = dialogView.findViewById(R.id.cb_is_sftp);
+        final EditText etBackupHost = dialogView.findViewById(R.id.et_backup_ftp_host);
+        final EditText etBackupPort = dialogView.findViewById(R.id.et_backup_ftp_port);
+
 
         etHost.setText(oldHost != null ? oldHost : "");
         etPort.setText(oldPort != null ? oldPort.toString() : "21");
@@ -117,6 +123,9 @@ public class MainActivity extends AppCompatActivity {
         etPass.setText(oldPass != null ? oldPass : "");
         etBasePath.setText(oldBasePath != null ? oldBasePath : "/");
         cbIsSftp.setChecked(isSftp != null ? isSftp : false);
+
+        etBackupHost.setText(oldBackupHost != null ? oldBackupHost : "");
+        etBackupPort.setText(oldBackupPort != null ? oldBackupPort.toString() : "21");
 
         new AlertDialog.Builder(this)
                 .setTitle(R.string.ftp_set)
@@ -131,6 +140,8 @@ public class MainActivity extends AppCompatActivity {
                     editor.putString("ftp_base_path", etBasePath.getText().toString().trim());
                     editor.putBoolean("is_sftp", cbIsSftp.isChecked());
                     editor.putBoolean(KEY_IS_FIRST_RUN, false);
+                    editor.putString("backup_ftp_host", etBackupHost.getText().toString().trim());
+                    editor.putString("backup_ftp_port", etBackupPort.getText().toString().trim());
                     editor.apply();
 
                     Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show();

@@ -30,4 +30,7 @@
     <string name="is_sftp">是否是SFTP服务器</string>
     <string name="part_done">部分成功,{0}未下载,{1}处理失败</string>
     <string name="original_video_loaded">视频下载完成</string>
+    <string name="backup_ftp_name">备用FTP服务器地址(比如192.168.0.1)</string>
+    <string name="backup_ftp_port">备用FTP服务器端口号(默认是21)</string>
+
 </resources>

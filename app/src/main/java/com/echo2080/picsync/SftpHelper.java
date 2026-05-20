@@ -53,11 +53,33 @@ public class SftpHelper implements FtpInterface {
     private boolean performConnect(Context context) {
         SharedPreferences prefs = context.getSharedPreferences("AppSettings", MODE_PRIVATE);
 
+        // 读取主服务器配置
         String host = prefs.getString("ftp_host", "");
         int port = Integer.parseInt(prefs.getString("ftp_port", "22"));
+
+        // 读取备用服务器配置
+        String backupHost = prefs.getString("backup_ftp_host", "");
+        int backupPort = Integer.parseInt(prefs.getString("backup_ftp_port", "22"));
+
         String user = prefs.getString("ftp_user", "");
         String password = prefs.getString("ftp_pass", "");
 
+        // 1. 优先尝试连接主服务器
+        if (connectToServer(host, port, user, password)) {
+            return true;
+        }
+
+        // 2. 如果主服务器连接失败，且备用服务器地址不为空，则尝试连接备用服务器
+        if (!backupHost.isEmpty()) {
+            Log.d("SFTP_CONNECT", "主服务器连接失败，正在尝试连接备用服务器: " + backupHost + ":" + backupPort);
+            return connectToServer(backupHost, backupPort, user, password);
+        }
+
+        // 3. 两个都失败了，返回 false
+        return false;
+    }
+
+    private boolean connectToServer(String host, int port, String user, String password) {
         try {
             JSch jsch = new JSch();
 
@@ -78,13 +100,16 @@ public class SftpHelper implements FtpInterface {
             channel.connect();
             channelSftp = (ChannelSftp) channel;
 
+            Log.d("SFTP_CONNECT", "成功连接到 SFTP 服务器: " + host + ":" + port);
             return true;
+
         } catch (JSchException e) {
             e.printStackTrace();
-            disconnect();
+            disconnect(); // 发生异常也要断开清理
             return false;
         }
     }
+
 
     /**
      * 断开 SFTP 连接
