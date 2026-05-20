@@ -30,6 +30,19 @@ public class SftpHelper implements FtpInterface {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private LogHelper logHelper;
 
+    static {
+        try {
+            String currentAlgorithms = JSch.getConfig("server_host_key");
+            if (currentAlgorithms != null && !currentAlgorithms.contains("ssh-ed25519")) {
+                JSch.setConfig("server_host_key", "ssh-ed25519," + currentAlgorithms);
+            }
+        } catch (Exception e) {
+            // 防止获取配置失败导致类加载崩溃
+            e.printStackTrace();
+        }
+    }
+
+
     /**
      * 连接 SFTP 服务器
      */
@@ -84,13 +97,6 @@ public class SftpHelper implements FtpInterface {
     private boolean connectToServer(String host, int port, String user, String password) {
         try {
             JSch jsch = new JSch();
-
-            // 👇 核心修复：直接在 JSch 实例上全局添加 ssh-ed25519 到支持列表中
-            // 这样能确保客户端在握手时一定会把 ed25519 发给服务器
-            String currentAlgorithms = JSch.getConfig("server_host_key");
-            if (!currentAlgorithms.contains("ssh-ed25519")) {
-                JSch.setConfig("server_host_key", "ssh-ed25519," + currentAlgorithms);
-            }
 
             session = jsch.getSession(user, host, port);
             session.setPassword(password);
