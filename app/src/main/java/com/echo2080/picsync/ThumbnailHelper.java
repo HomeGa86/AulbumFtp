@@ -37,11 +37,12 @@ public class ThumbnailHelper {
     private static final String TAG = "ThumbnailHelper";
     public static final int THUMBNAIL_SIZE = 300;
 
-    public static String createAndSaveThumbnail(File originalFile, File targetFile) {
+    public static String createAndSaveThumbnail(File originalFile, File targetFile, LogHelper logHelper) {
         Log.d(TAG, "开始处理: " + originalFile.getAbsolutePath());
 
         if (!originalFile.exists()) {
             Log.e(TAG, "源文件不存在");
+            logHelper.logToFile("createAndSaveThumbnail failed, file not existing:" + originalFile.getAbsolutePath());
             return null;
         }
 
@@ -58,6 +59,7 @@ public class ThumbnailHelper {
             originalBitmap = BitmapFactory.decodeFile(originalFile.getAbsolutePath(), options);
             if (originalBitmap == null) {
                 Log.e(TAG, "BitmapFactory.decodeFile 返回 null，文件可能损坏");
+                logHelper.logToFile("createAndSaveThumbnail failed, originalBitmap is null:" + originalFile.getAbsolutePath());
                 return null;
             }
 
@@ -74,6 +76,7 @@ public class ThumbnailHelper {
 
             if (scaledBitmap == null) {
                 Log.e(TAG, "生成缩放图失败");
+                logHelper.logToFile("createAndSaveThumbnail failed, scaledBitmap is null:" + originalFile.getAbsolutePath());
                 return null;
             }
 
@@ -88,21 +91,29 @@ public class ThumbnailHelper {
             }
 
             // 6. 保存为 JPEG
-            boolean result = scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 85, new FileOutputStream(targetFile));
-
-            if (result) {
-                Log.d(TAG, "✅ 缩略图保存成功: " + targetFile.getAbsolutePath());
-                return targetFile.getAbsolutePath();
-            } else {
-                Log.e(TAG, "❌ 缩略图保存失败 (Compress 返回 false)");
-                return null;
+            try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+                boolean result = scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 85, fos);
+                if (result) {
+                    Log.d(TAG, "✅ 缩略图保存成功: " + targetFile.getAbsolutePath());
+                    return targetFile.getAbsolutePath();
+                } else {
+                    Log.e(TAG, "❌ 缩略图保存失败 (Compress 返回 false)");
+                    logHelper.logToFile("createAndSaveThumbnail failed, scaledBitmap.compress failed:" + originalFile.getAbsolutePath());
+                    return null;
+                }
+            } catch (IOException e) {
+                throw e;
             }
 
         } catch (IOException e) {
             Log.e(TAG, "文件 IO 异常", e);
+            logHelper.logToFile("createAndSaveThumbnail failed:" + originalFile.getAbsolutePath());
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             return null;
         } catch (Exception e) {
             Log.e(TAG, "未知异常", e);
+            logHelper.logToFile("createAndSaveThumbnail failed:" + originalFile.getAbsolutePath());
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
             return null;
         } finally {
             // 7. 最终兜底：确保缩放后的缩略图被回收（如果前面没有因为异常中断）
@@ -131,11 +142,12 @@ public class ThumbnailHelper {
             // 准备写入缩略图的 EXIF 信息
             ExifInterface destExif = new ExifInterface(destFile.getAbsolutePath());
 
-            // 1. 提取并转换拍摄时间
+            // 1. 提取并转换拍摄时间 (优先使用 EXIF)
             String dateTime = sourceExif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
             if (dateTime == null) {
                 dateTime = sourceExif.getAttribute(ExifInterface.TAG_DATETIME);
             }
+
             if (dateTime != null) {
                 try {
                     // EXIF 时间格式通常为 "yyyy:MM:dd HH:mm:ss"
@@ -149,7 +161,18 @@ public class ThumbnailHelper {
                 }
             }
 
-            // 2. 提取并转换 GPS 坐标
+            // 2. 【新增逻辑】如果 EXIF 中没有时间，则尝试从文件名提取
+            if (captureTime == 0) {
+                String fileName = sourceFile.getName();
+                // 去除扩展名，只保留文件名主体
+                int dotIndex = fileName.lastIndexOf('.');
+                String nameWithoutExt = (dotIndex > 0) ? fileName.substring(0, dotIndex) : fileName;
+
+                // 尝试提取时间戳 (支持 13位毫秒 和 10位秒)
+                captureTime = extractTimestampFromFilename(nameWithoutExt);
+            }
+
+            // 3. 提取并转换 GPS 坐标 (保持不变)
             String latRef = sourceExif.getAttribute(ExifInterface.TAG_GPS_LATITUDE_REF);
             String latValue = sourceExif.getAttribute(ExifInterface.TAG_GPS_LATITUDE);
             String lonRef = sourceExif.getAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF);
@@ -160,7 +183,7 @@ public class ThumbnailHelper {
                 longitude = convertGpsToDecimal(lonValue, lonRef);
             }
 
-            // 3. 复制其他关键 EXIF 标签到缩略图
+            // 4. 复制其他关键 EXIF 标签到缩略图 (保持不变)
             String[] tags = {
                     ExifInterface.TAG_DATETIME,
                     ExifInterface.TAG_DATETIME_ORIGINAL,
@@ -185,7 +208,7 @@ public class ThumbnailHelper {
                 }
             }
 
-            // 保存写入的 EXIF 信息到缩略图文件
+            // 5. 写入修改后的 EXIF 到目标文件
             destExif.saveAttributes();
 
         } catch (IOException e) {
@@ -194,6 +217,102 @@ public class ThumbnailHelper {
 
         // 返回解析好的数据对象
         return new ExifInfo(captureTime, latitude, longitude);
+    }
+
+
+    // ==================================================================================
+// 辅助方法：从文件名字符串中提取时间戳 (支持时间戳、日期格式)
+// ==================================================================================
+    private static long extractTimestampFromFilename(String fileName) {
+        // 1. 移除常见的前缀干扰，如 "mmexport", "IMG_", "VID_" 等
+        String cleaned = fileName
+                .replace("mmexport", "")
+                .replace("IMG_", "")
+                .replace("img_", "") // 兼容小写 img_
+                .replace("VID_", "")
+                .replace("WhatsApp_Image", "")
+                .replace("WhatsApp_Video", "");
+
+        // ---------------------------------------------------------
+        // 方案 A: 尝试匹配纯数字时间戳 (10位秒 或 13位毫秒)
+        // 正则：匹配 10位 到 13位 的连续数字
+        // ---------------------------------------------------------
+        java.util.regex.Pattern timestampPattern = java.util.regex.Pattern.compile("\\b(\\d{10,13})\\b");
+        java.util.regex.Matcher timestampMatcher = timestampPattern.matcher(cleaned);
+
+        if (timestampMatcher.find()) {
+            String numberStr = timestampMatcher.group(1);
+            try {
+                long timestamp;
+                if (numberStr.length() == 10) {
+                    // 如果是10位，视为 Unix 时间戳（秒）
+                    timestamp = Long.parseLong(numberStr) * 1000L;
+                } else {
+                    // 如果是13位，直接解析
+                    timestamp = Long.parseLong(numberStr);
+                }
+
+                // 安全验证：检查时间戳是否在合理范围内 (2000年 - 2030年)
+                long year2000 = 946684800000L;
+                long year2030 = 1893456000000L;
+
+                if (timestamp >= year2000 && timestamp <= year2030) {
+                    return timestamp;
+                }
+            } catch (NumberFormatException e) {
+                e.printStackTrace();
+            }
+        }
+
+        // ---------------------------------------------------------
+        // 方案 B: 尝试匹配日期格式 (例如: 20260517_123456 或 2026-05-17_123456)
+        // 正则解释：
+        // (\\d{4})   -> 年份 (4位)
+        // [-_]??     -> 可选的分隔符 (- 或 _)
+        // (\\d{2})   -> 月份 (2位)
+        // [-_]??     -> 可选的分隔符
+        // (\\d{2})   -> 日期 (2位)
+        // [_T ]??    -> 可选的时间分隔符 (_ 或 T 或 空格)
+        // (\\d{2})   -> 小时 (2位)
+        // :??        -> 可选的分隔符 (:)
+        // (\\d{2})   -> 分钟 (2位)
+        // :??        -> 可选的分隔符 (:)
+        // (\\d{2})   -> 秒数 (2位)
+        // ---------------------------------------------------------
+        String dateRegex = "(\\d{4})[-_]? ?(\\d{2})[-_]? ?(\\d{2})[_T ]?(\\d{2}):?(\\d{2}):?(\\d{2})";
+        java.util.regex.Pattern datePattern = java.util.regex.Pattern.compile(dateRegex);
+        java.util.regex.Matcher dateMatcher = datePattern.matcher(cleaned);
+
+        if (dateMatcher.find()) {
+            try {
+                int year = Integer.parseInt(dateMatcher.group(1));
+                int month = Integer.parseInt(dateMatcher.group(2));
+                int day = Integer.parseInt(dateMatcher.group(3));
+                int hour = Integer.parseInt(dateMatcher.group(4));
+                int minute = Integer.parseInt(dateMatcher.group(5));
+                int second = Integer.parseInt(dateMatcher.group(6));
+
+                // 使用 Calendar 将提取出的年月日时分秒组装成毫秒时间戳
+                java.util.Calendar calendar = java.util.Calendar.getInstance();
+                calendar.set(year, month - 1, day, hour, minute, second); // 注意：Calendar的月份是从 0 开始的
+                calendar.set(java.util.Calendar.MILLISECOND, 0);
+
+                long parsedTime = calendar.getTimeInMillis();
+
+                // 同样进行安全范围校验 (2000年 - 2030年)
+                long year2000 = 946684800000L;
+                long year2030 = 1893456000000L;
+
+                if (parsedTime >= year2000 && parsedTime <= year2030) {
+                    return parsedTime;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        // 两种方案均未找到有效时间戳
+        return 0;
     }
 
     /**
@@ -236,31 +355,7 @@ public class ThumbnailHelper {
 
         // 2. 防御性容错：如果元数据没有，尝试通过正则表达式从文件名中匹配时间（例如 VID_20260517_123456.mp4）
         if (fileName != null) {
-            Pattern pattern = Pattern.compile("(\\d{4})_?(\\d{2})_?(\\d{2})_?(\\d{2})(\\d{2})(\\d{2})");
-            Matcher matcher = pattern.matcher(fileName);
-            if (matcher.find()) {
-                String timeStr = matcher.group(1) + matcher.group(2) + matcher.group(3) + matcher.group(4) + matcher.group(5) + matcher.group(6);
-                SimpleDateFormat parser = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault());
-                try {
-                    Date date = parser.parse(timeStr);
-                    if (date != null) {
-                        Log.d(TAG, "从文件名成功匹配并解析出时间戳: " + fileName);
-                        return date.getTime();
-                    }
-                } catch (ParseException ignored) {}
-            }
-
-            // 针对只有日期的简易匹配 (例如 wp_ss_20260517.mp4)
-            Pattern datePattern = Pattern.compile("(\\d{4})_?(\\d{2})_?(\\d{2})");
-            Matcher dateMatcher = datePattern.matcher(fileName);
-            if (dateMatcher.find()) {
-                String dateStr = dateMatcher.group(1) + dateMatcher.group(2) + dateMatcher.group(3);
-                SimpleDateFormat parser = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
-                try {
-                    Date date = parser.parse(dateStr);
-                    if (date != null) return date.getTime();
-                } catch (ParseException ignored) {}
-            }
+            return extractTimestampFromFilename(fileName);
         }
 
         // 3. 最后的保底方案：返回文件的最后修改时间

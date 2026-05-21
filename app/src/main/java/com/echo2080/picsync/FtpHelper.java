@@ -15,7 +15,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 
 import static android.content.Context.MODE_PRIVATE;
 
@@ -27,6 +29,11 @@ public class FtpHelper implements FtpInterface {
     private Context context;
     private LogHelper logHelper;
 
+
+    public FtpHelper(Context context)
+    {
+        this.context = context;
+    }
 
     /**
      * 连接 FTP 服务器
@@ -137,27 +144,81 @@ public class FtpHelper implements FtpInterface {
     }
 
     /**
-     * 递归遍历 FTP 服务器上的所有文件
+     * 【对外公开的安全方法】带有自动重试机制的文件列表获取（支持断点续传，绝不回头！）
      */
-    public void listAllFiles(String remotePath, List<String> fileList) throws IOException {
+    public void listAllFiles(String remotePath, List<String> fileList) {
+        // 使用 LinkedList 作为任务队列，存放所有等待遍历的目录路径
+        LinkedList<String> dirQueue = new LinkedList<>();
+        dirQueue.add(remotePath);
+
+        int retryCount = 0;
+
+        while (!dirQueue.isEmpty()) {
+            // 💡 关键修改1：先 peek() 而不是 removeFirst()。如果这次处理失败了，这个目录还会继续留在队列头部。
+            String currentDir = dirQueue.peek();
+
+            try {
+                // 处理当前目录，如果发现子目录，会直接塞回 dirQueue 中等待后续处理
+                processDirectory(currentDir, fileList, dirQueue);
+
+                // 💡 关键修改2：只有当 processDirectory 完全成功执行后，才把这个目录从队列里彻底移除！
+                dirQueue.removeFirst();
+
+                // 成功处理完一个目录，重置重试计数器
+                retryCount = 0;
+
+            } catch (Exception e) {
+                retryCount++;
+                logHelper.logToFile("列出文件时发生异常，第 " + retryCount + " 次尝试失败: " + e.getMessage());
+
+                if (retryCount >= 5) {
+                    logHelper.logToFile("已达到最大重试次数 (" + 5 + ")，放弃列出文件操作。");
+                    break;
+                }
+
+                logHelper.logToFile("正在尝试重连服务器并进行下一次重试...");
+                boolean reconnected = reconnect(context);
+                if (!reconnected) {
+                    logHelper.logToFile("重连服务器失败！");
+                }
+
+                // 等待一段时间再重试
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException ie) {
+                    ie.printStackTrace();
+                }
+                // ⬇️ 此时 currentDir 依然在 dirQueue 的头部，while 循环继续时会重新取出并处理它
+            }
+        }
+
+        return;
+    }
+
+    private void processDirectory(String remotePath, List<String> fileList, Queue<String> dirQueue) throws IOException {
         FTPFile[] files = ftpClient.listFiles(remotePath);
+
         for (FTPFile file : files) {
             String fullPath = remotePath.endsWith("/") ? remotePath + file.getName() : remotePath + "/" + file.getName();
+
             if (file.isDirectory()) {
-                if (!file.getName().startsWith(".")) { // 跳过隐藏目录
-                    listAllFiles(fullPath, fileList);
+                // 如果是目录且不是隐藏目录，直接丢进队列尾部，等待以后处理
+                if (!file.getName().startsWith(".")) {
+                    dirQueue.add(fullPath);
                 }
             } else if (file.isFile()) {
-                // 只处理图片文件
+                // 如果是符合条件的文件，直接加入最终的结果列表
                 String name = file.getName().toLowerCase();
                 if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
-                        || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp") || name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".mov")
+                        || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp")
+                        || name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".mov")
                         || name.endsWith(".avi") || name.endsWith(".3gp")) {
                     fileList.add(fullPath);
                 }
             }
         }
     }
+
 
     /**
      * 下载文件（无进度监听的基础版本）

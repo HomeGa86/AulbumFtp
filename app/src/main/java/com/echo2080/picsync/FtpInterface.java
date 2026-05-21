@@ -2,6 +2,8 @@ package com.echo2080.picsync;
 
 import android.content.Context;
 
+import com.jcraft.jsch.SftpException;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
@@ -26,7 +28,7 @@ public interface FtpInterface {
     /**
      * 递归遍历服务器上的所有文件
      */
-    void listAllFiles(String remotePath, List<String> fileList) throws IOException;
+    void listAllFiles(String remotePath, List<String> fileList) throws IOException, SftpException;
 
     /**
      * 下载文件

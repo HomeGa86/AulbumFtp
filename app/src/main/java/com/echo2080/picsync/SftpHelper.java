@@ -17,13 +17,17 @@ import com.jcraft.jsch.SftpException;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 import java.util.Vector;
 
 import static android.content.Context.MODE_PRIVATE;
 
 public class SftpHelper implements FtpInterface {
 
+    private final Context context;
     private Session session;
     private ChannelSftp channelSftp;
     // 用于将进度回调切换到主线程执行
@@ -40,6 +44,10 @@ public class SftpHelper implements FtpInterface {
             // 防止获取配置失败导致类加载崩溃
             e.printStackTrace();
         }
+    }
+
+    public SftpHelper(Context context) {
+        this.context = context;
     }
 
 
@@ -94,6 +102,7 @@ public class SftpHelper implements FtpInterface {
         return false;
     }
 
+
     private boolean connectToServer(String host, int port, String user, String password) {
         try {
             JSch jsch = new JSch();
@@ -140,35 +149,79 @@ public class SftpHelper implements FtpInterface {
         }
     }
 
-    /**
-     * 递归遍历 SFTP 服务器上的所有文件
-     */
-    public void listAllFiles(String remotePath, List<String> fileList) throws IOException {
-        try {
-            Vector<ChannelSftp.LsEntry> entries = channelSftp.ls(remotePath);
-            for (ChannelSftp.LsEntry entry : entries) {
-                if (".".equals(entry.getFilename()) || "..".equals(entry.getFilename())) {
-                    continue;
+    public void listAllFiles(String remotePath, List<String> fileList) {
+        // 使用 LinkedList 作为任务队列
+        LinkedList<String> dirQueue = new LinkedList<>();
+        dirQueue.add(remotePath);
+
+        int retryCount = 0;
+
+        while (!dirQueue.isEmpty()) {
+            // 💡 关键修改1：先 peek() 而不是 removeFirst()。
+            // 如果这次处理失败了，这个目录还会继续留在队列头部，下次循环还能取到它。
+            String currentDir = dirQueue.peek();
+
+            try {
+                // 处理当前目录
+                processDirectory(currentDir, fileList, dirQueue);
+
+                // 💡 关键修改2：只有当 processDirectory 完全成功执行后，才把这个目录从队列里彻底移除！
+                dirQueue.removeFirst();
+
+                // 成功处理完一个目录，重置重试计数器
+                retryCount = 0;
+
+            } catch (Exception e) {
+                retryCount++;
+                logHelper.logToFile("列出文件时发生异常，第 " + retryCount + " 次尝试失败: " + e.getMessage());
+
+                if (retryCount >= 5) {
+                    logHelper.logToFile("已达到最大重试次数 (" + 5 + ")，放弃列出文件操作。");
+                    break;
                 }
-                String fullPath = remotePath.endsWith("/") ? remotePath + entry.getFilename() : remotePath + "/" + entry.getFilename();
-                if (entry.getAttrs().isDir()) {
-                    if (!entry.getFilename().startsWith(".")) {
-                        listAllFiles(fullPath, fileList);
-                    }
-                } else {
-                    String name = entry.getFilename().toLowerCase();
-                    if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
-                            || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp")
-                            || name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".mov")
-                            || name.endsWith(".avi") || name.endsWith(".3gp")) {
-                        fileList.add(fullPath);
-                    }
+
+                logHelper.logToFile("正在尝试重连服务器并进行下一次重试...");
+                boolean reconnected = reconnect(context);
+                if (!reconnected) {
+                    logHelper.logToFile("重连服务器失败！");
+                }
+
+                // 等待一段时间再重试
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException ie) {
+                    ie.printStackTrace();
+                }
+                // ⬇️ 此时 currentDir 依然在 dirQueue 的头部，while 循环继续时会重新取出并处理它
+            }
+        }
+        return;
+    }
+
+
+    private void processDirectory(String remotePath, List<String> fileList, Queue<String> dirQueue) throws SftpException {
+        Vector<ChannelSftp.LsEntry> entries = channelSftp.ls(remotePath);
+
+        for (ChannelSftp.LsEntry entry : entries) {
+            if (".".equals(entry.getFilename()) || "..".equals(entry.getFilename())) {
+                continue;
+            }
+
+            String fullPath = remotePath.endsWith("/") ? remotePath + entry.getFilename() : remotePath + "/" + entry.getFilename();
+
+            if (entry.getAttrs().isDir()) {
+                if (!entry.getFilename().startsWith(".")) {
+                    dirQueue.add(fullPath); // 子目录加入队列尾部等待处理
+                }
+            } else {
+                String name = entry.getFilename().toLowerCase();
+                if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
+                        || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp")
+                        || name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".mov")
+                        || name.endsWith(".avi") || name.endsWith(".3gp")) {
+                    fileList.add(fullPath); // 符合条件的文件加入结果集
                 }
             }
-        } catch (SftpException e) {
-            logHelper.logToFile("Failed to list files in " + remotePath);
-            logHelper.logToFile(android.util.Log.getStackTraceString(e));
-            throw new IOException("Failed to list files in " + remotePath, e);
         }
     }
 
@@ -261,6 +314,72 @@ public class SftpHelper implements FtpInterface {
         }
         return downloadSuccess;
     }
+
+    public boolean downloadFileWithResume(String remoteFilePath, File localFile, long startOffset, DownloadProgressListener listener) {
+        boolean downloadSuccess = false;
+        long fileSize = getFileSize(remoteFilePath);
+
+        try {
+            // 💡 关键改动：使用 "a" (append) 模式打开 FileOutputStream
+            // 这样写入的数据会追加到现有文件后面，而不是覆盖它！
+            try (FileOutputStream fos = new FileOutputStream(localFile, true)) {
+
+                channelSftp.get(remoteFilePath, fos, new com.jcraft.jsch.SftpProgressMonitor() {
+                    // 💡 关键改动：totalBytesRead 初始值设为 startOffset
+                    long totalBytesRead = startOffset;
+                    long lastUpdate = System.currentTimeMillis();
+                    long startTime = System.currentTimeMillis();
+
+                    @Override
+                    public void init(int op, String src, String dest, long max) {}
+
+                    @Override
+                    public boolean count(long count) {
+                        totalBytesRead += count;
+                        long currentTime = System.currentTimeMillis();
+
+                        if (currentTime - lastUpdate > 1000 && fileSize > 0) {
+                            long timeElapsed = (currentTime - startTime) / 1000;
+                            if (timeElapsed <= 0) timeElapsed = 1; // 避免除以0
+
+                            long speedBytesPerSec = (totalBytesRead - startOffset) / timeElapsed;
+                            String progressPercent = String.format("%.2f%%", (totalBytesRead * 100.0 / fileSize));
+                            String speed = formatSize(speedBytesPerSec) + "/s";
+                            String statusText = progressPercent + " - " + speed;
+                            int intProgress = (int) ((totalBytesRead * 100L) / fileSize);
+
+                            if (listener != null) {
+                                mainHandler.post(() -> listener.onProgress(intProgress, statusText));
+                            }
+                        }
+                        lastUpdate = currentTime;
+                        return true;
+                    }
+
+                    @Override
+                    public void end() {}
+                }, ChannelSftp.OVERWRITE, startOffset); // 💡 核心：传入 startOffset，让 JSch 从指定位置开始拉取数据
+
+                downloadSuccess = true;
+            }
+        } catch (Exception e) {
+            logHelper.logToFile("Failed to download file with resume: " + remoteFilePath);
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
+            e.printStackTrace();
+            downloadSuccess = false;
+        } finally {
+            if (listener != null) {
+                final boolean isSuccess = downloadSuccess;
+                if (isSuccess) {
+                    mainHandler.post(() -> listener.onProgress(100,"100.00%"));
+                }
+                mainHandler.post(() -> listener.onFinish(isSuccess));
+            }
+        }
+        return downloadSuccess;
+    }
+
+
     /**
      * 辅助方法：将字节大小格式化为人类可读的字符串 (B, KB, MB, GB)
      */

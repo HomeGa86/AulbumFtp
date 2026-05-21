@@ -24,6 +24,8 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
+import com.jcraft.jsch.SftpException;
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -75,11 +77,11 @@ public class SyncService extends Service {
         Boolean isSftp = prefs.getBoolean("is_sftp", false);
         if(isSftp)
         {
-            ftpHelper = new SftpHelper();
+            ftpHelper = new SftpHelper(this);
         }
         else
         {
-            ftpHelper = new FtpHelper();
+            ftpHelper = new FtpHelper(this);
         }
 
         executor = Executors.newSingleThreadExecutor();
@@ -144,6 +146,7 @@ public class SyncService extends Service {
         }
 
         List<String> downloadedPaths = database.downloadedFileDao().getAllDownloadedPaths();
+        logHelper.logToFile("downloadedPaths:" + String.valueOf(downloadedPaths == null ? 0 : downloadedPaths.size()));
 
         SharedPreferences appPrefs = this.getSharedPreferences("AppSettings", MODE_PRIVATE);
         String basePath = appPrefs.getString("ftp_base_path", "/");
@@ -163,6 +166,8 @@ public class SyncService extends Service {
         }
 
         Log.d(TAG, "FTP 上共有 " + allRemoteFiles.size() + " 个文件");
+        logHelper.logToFile("Total files on server:" + allRemoteFiles.size());
+
 
         List<String> newFiles = new ArrayList<>();
         for (String remotePath : allRemoteFiles) {
@@ -172,11 +177,6 @@ public class SyncService extends Service {
         }
         Log.d(TAG, "需要下载 " + newFiles.size() + " 个新文件");
         updateNotification(MessageFormat.format(getString(R.string.x_files_to_download), newFiles.size()));
-
-        File failLogDir = new File(getCacheDir(), "sync_logs");
-        if (!failLogDir.exists()) failLogDir.mkdirs();
-        String logFileName = "sync_fail_log_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date()) + ".txt";
-        File failLogFile = new File(failLogDir, logFileName);
 
         int total = newFiles.size();
         int current = 0;
@@ -196,41 +196,65 @@ public class SyncService extends Service {
 
             boolean downloadSuccess = false;
             int retryCount = 0;
-            final int MAX_RETRY = 3;
+            final int MAX_RETRY = 10;
+
+            // 💡 新增：记录当前已经下载的字节数，初始为 0
+            long downloadedBytes = 0;
 
             while (!downloadSuccess && retryCount < MAX_RETRY) {
-                if (retryCount > 0 && tempFile.exists()) {
-                    tempFile.delete();
-                    Log.w(TAG, "准备第 " + retryCount + " 次重试下载: " + fileName);
+                if (retryCount > 0) {
+                    Log.w(TAG, "准备第 " + retryCount + " 次重试下载: " + fileName + " (已从 " + downloadedBytes + " 字节处继续)");
                     try { Thread.sleep(1000 * retryCount); } catch (InterruptedException e) {}
-                }
 
-                downloadSuccess = ftpHelper.downloadFile(remotePath, tempFile);
-
-                if (!downloadSuccess) {
-                    Log.e(TAG, "下载失败，尝试重新连接 FTP...: " + remotePath);
+                    // 💡 关键改动：重连服务器
                     boolean reconnectSuccess = ftpHelper.reconnect(this);
                     if (!reconnectSuccess) {
-                        Log.e(TAG, "FTP 重连失败，放弃下载: " + remotePath);
-                        failedToDownloadCount++;
+                        Log.e(TAG, "FTP/SFTP 重连失败，放弃下载: " + remotePath);
+                        logHelper.logToFile("reconnect failed for file:" + remotePath);
                         break;
                     }
                 }
+
+                // 💡 智能判断：如果是 SftpHelper 且已经有部分下载数据，则调用断点续传方法
+                if (ftpHelper instanceof SftpHelper && downloadedBytes > 0) {
+                    SftpHelper sftpHelper = (SftpHelper) ftpHelper;
+                    // 传入当前的 downloadedBytes 作为起始偏移量
+                    downloadSuccess = sftpHelper.downloadFileWithResume(remotePath, tempFile, downloadedBytes, null);
+                } else {
+                    // 普通 FtpHelper 或者第一次下载，走原有逻辑
+                    // 注意：你的 FtpInterface 里的 downloadFile 最好也支持传入 listener，这里暂用 null
+                    downloadSuccess = ftpHelper.downloadFile(remotePath, tempFile, null);
+                }
+
+                if (downloadSuccess) {
+                    break; // 下载成功，跳出循环
+                }
+
+                // 💡 下载失败的处理逻辑
+                if (tempFile.exists()) {
+                    // 更新已下载的字节数，为下一次“断点续传”做准备
+                    downloadedBytes = tempFile.length();
+                    Log.d(TAG, "下载中断，本地临时文件大小: " + downloadedBytes + " bytes");
+                } else {
+                    downloadedBytes = 0;
+                }
+
                 retryCount++;
             }
+
 
             if (!downloadSuccess) {
                 Log.e(TAG, "多次重试后依然下载失败: " + remotePath);
                 if (tempFile.exists()) tempFile.delete();
-                logFailure(failLogFile, remotePath, "下载失败（多次重试后无法获取文件）");
+                logHelper.logToFile("Failed to download a file after retry:" + remotePath);
                 continue;
             }
 
             if (tempFile.length() < 2) {
                 Log.e(TAG, "文件过小，判定为下载不完整，删除: " + tempFile.getName());
+                logHelper.logToFile("File is too small:" + tempFile.getAbsolutePath());
                 tempFile.delete();
                 failedToDownloadCount++;
-                logFailure(failLogFile, remotePath, "下载失败（文件过小或不完整）");
                 continue;
             }
 
@@ -271,13 +295,30 @@ public class SyncService extends Service {
                                 videoFrame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
                                 thumbnailPath = thumbnailFile.getAbsolutePath();
                             }
+                            catch (Exception ex)
+                            {
+                                logHelper.logToFile("Failed to generate thumbnail, videoFrame.compress failed:" + tempFile.getAbsolutePath());
+                                logHelper.logToFile(android.util.Log.getStackTraceString(ex));
+                            }
                             videoFrame.recycle();
                         }
+                        else
+                        {
+                            logHelper.logToFile("Failed to generate thumbnail, videoFrame is null:" + tempFile.getAbsolutePath());
+                        }
+                    }
+                    else
+                    {
+                        logHelper.logToFile("Failed to generate thumbnail or capture time, width or height is not right:" + tempFile.getAbsolutePath());
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "解析视频或提取首帧失败: " + fileName, e);
+                    logHelper.logToFile("Failed to generate thumbnail or capture time:" + tempFile.getAbsolutePath());
+                    logHelper.logToFile(android.util.Log.getStackTraceString(e));
                 } finally {
-                    try { retriever.release(); } catch (IOException ignored) {}
+                    try { retriever.release(); } catch (IOException ignored) {
+                        logHelper.logToFile("Failed to release retriever:" + tempFile.getAbsolutePath());
+                    }
                 }
             } else {
                 // 🖼️ 图片流处理分支
@@ -287,22 +328,30 @@ public class SyncService extends Service {
 
                 if (checkOptions.outWidth > 0 && checkOptions.outHeight > 0) {
                     parseSuccess = true;
-                    thumbnailPath = ThumbnailHelper.createAndSaveThumbnail(tempFile, thumbnailFile);
+                    thumbnailPath = ThumbnailHelper.createAndSaveThumbnail(tempFile, thumbnailFile, logHelper);
                     if (thumbnailPath != null) {
                         ThumbnailHelper.ExifInfo exifInfo = ThumbnailHelper.copyExifInfo(tempFile, thumbnailFile);
                         if (exifInfo != null && exifInfo.captureTime > 0) {
                             captureTime = exifInfo.captureTime;
                         }
                     }
+                    else
+                    {
+                        logHelper.logToFile("Failed to generate thumbnail or capture time, thumbnailPath is null:" + tempFile.getAbsolutePath());
+                    }
+                }
+                else
+                {
+                    logHelper.logToFile("Failed to generate thumbnail, width or height is not right:" + tempFile.getAbsolutePath());
                 }
             }
 
             // 校验解析与缩略图是否生成成功
             if (!parseSuccess || thumbnailPath == null) {
                 Log.e(TAG, "解析文件或生成缩略图失败: " + remotePath);
+                logHelper.logToFile("Failed to generate thumbnail, parseSuccess is false or thumbnailPath is null:" + tempFile.getAbsolutePath());
                 tempFile.delete(); // 清理残留空间
                 failedToProcessCount++;
-                logFailure(failLogFile, remotePath, "解析失败（文件损坏、格式不支持或生成缩略图失败）");
                 continue;
             }
 
@@ -336,11 +385,6 @@ public class SyncService extends Service {
             updateNotification(MessageFormat.format(getString(R.string.part_done), failedToDownloadCount, failedToProcessCount));
         }
 
-        if (failLogFile.exists() && failLogFile.length() > 0) {
-            updateNotification("正在上传失败日志文件...");
-            String remoteLogPath = basePath + "sync_logs/" + logFileName;
-            ftpHelper.uploadFile(remoteLogPath, failLogFile);
-        }
 
         ftpHelper.disconnect();
         isRunning.set(false);
@@ -350,6 +394,8 @@ public class SyncService extends Service {
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         }
     }
+
+
 
     // 辅助工具方法：根据后缀名映射到文件类型枚举
     private FileType getFileTypeByExtension(String fileName) {

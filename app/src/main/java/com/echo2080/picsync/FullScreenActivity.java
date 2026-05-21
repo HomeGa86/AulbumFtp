@@ -151,11 +151,11 @@ public class FullScreenActivity extends AppCompatActivity {
         FtpInterface ftpHelper = null;
         if(isSftp)
         {
-            ftpHelper = new SftpHelper();
+            ftpHelper = new SftpHelper(this);
         }
         else
         {
-            ftpHelper = new FtpHelper();
+            ftpHelper = new FtpHelper(this);
         }
 
         downloadSuccess = false;
