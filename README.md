@@ -1,4 +1,5 @@
 An android app to view pictures and videos on a ftp or sftp server, it auto downloads all pictures and videos from ftp server or sftp server and create small size local pictures to save storage, when you click a local picture or a video, it auto downloads the original picture from the ftp or sftp server
+This app's feature is to simulate a cloud photo of phones, but it is free. You can setup your ftp/sftp server with many free choices, sftp server is recommended because it's secure and it supports resuming download. This app only downloads pictures  or videos from a server, it does not upload any file to a server.
 1. Information Security
    This app does not need to access your phone's folders (e.g. the photo folders or any other folders).
    If will not ask you for permission to access your storage, so it's safe, don't worry to use it.
