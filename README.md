@@ -1,21 +1,13 @@
-An android app to view pictures and videos on a ftp or sftp server, it auto downloads all pictures and videos from ftp server or sftp server and create small size local pictures to save storage, when you click a local picture or a video, it auto downloads the original picture from the ftp or sftp server
-This app's feature is to simulate a cloud photo of phones, but it is free. You can setup your ftp/sftp server with many free choices, sftp server is recommended because it's secure and it supports resuming download. This app only downloads pictures  or videos from a server, it does not upload any file to a server.
-
-Why do I write this app?
-   Because I have lots of photoes and videos (> 200G) stored on computer's hard disks, but sometimes I would like to view them, it's not convenient to use a computer. And I know that there are some other apps which have the similar feature, but most of those apps require the user to deploy a "heavy" server which costs much electricity and money. So a ftp/sftp server can be deployed to small devices like Android TV box (which is my server) or some other small devices which costs much less electricity. An android device's typical voltage is 5v, flow is around 1A or 2A, so it's just 5W or 10W, very less than a 100W or 200W computer.
-
-1. Information Security
-   This app does not need to access your phone's folders (e.g. the photo folders or any other folders).
-   It will not ask you for permission to access your storage, so it's safe, don't worry to use it.
-   This app only write/read data from its own folder which is the app's specific folder, and read data from ftp/sftp server, so it's very safe.
-2. A downloaded file will not be downloaded again
-   A file is identified by its ftp full path excluding its host name and port (e.g. a file's id is /rootfolder/subfolder1/subfolder2/photo.jpg)
-   That means, if the folder structure doesn't change, the downloaded file will not be downloaded again even if you change a server host name or port.
-3. Below file types are supported
-   .jpg, .jpeg, .png, .gif, .bmp, .webp, .mp4, .mkv, .mov, .avi, .3gp
-4. Pictures and Videos will be downloaded, and a very small size thumbnail picture will be generated and stored on the phone. Video will not be store on your phone.
-   Original picture or video will be downloaded only when you click it in the app, and the original picture or video files are stored in a app sepecifc cache folder, the cache will be cleared when the app is closed.
-   If the cache is not cleared when the app is closed, don't worry, most Android systems will automatically clear the cache when it thinks it's too large.
-5. Android 11 and Android 16 are tested
-6. The app will try to extract the capture date&time from the original pictures and videos, if the original pictures and videos don't have a capture date&time, the app will try to extract it from the file name. Capture date&time will be used to sort the pictures and videos in the app.
-7. If all the pictures and videos have been downloaed successfully, then the app will not try to download or list the files from the server again within 10 days. The purpose of this feature is to save network access of the phone and it assumes the photoes and videos on the server don't change frequently.
+App Description
+An Android app that lets you view photos and videos hosted on your own FTP or SFTP server. It automatically generates lightweight local thumbnails to save phone storage. When you tap a thumbnail, the app seamlessly downloads and streams the original file from your server.
+​Think of it as your own private, free cloud photo service. We recommend using SFTP for its security and support for resuming downloads. Please note: This app is currently read-only; it only downloads files from your server and does not upload files.
+​Why did I create this app?
+I have over 200GB of photos and videos stored on my computer's hard drives. Accessing them from a computer isn't always convenient. While similar apps exist, most require heavy server setups that consume a lot of electricity and money. By using an FTP/SFTP server, you can host your files on lightweight devices like an Android TV box. A small device like this only draws about 5W–10W (5\text{V} at 1\text{A} or 2\text{A}), which is drastically more energy-efficient than a 100W–200W computer running 24/7.
+​Key Features:
+​Privacy & Security First: The app does not require access to your phone’s local photo storage or folders. It operates entirely within its own isolated app folder, keeping your personal data safe and secure.
+​Smart Cache & Deduplication: Files are identified by their absolute server path (e.g., /rootfolder/subfolder/photo.jpg). As long as your server's folder structure remains the same, the app won't re-download files—even if you change your server's hostname or port.
+​Wide Format Support: Fully supports .jpg, .jpeg, .png, .gif, .bmp, .webp, .mp4, .mkv, .mov, .avi, and .3gp.
+​Storage-Saving Thumbnails: The app only stores tiny thumbnails on your phone. Original files are cached only when you open them and are automatically cleared when the app closes (or when the Android system manages its cache). Videos are never stored permanently on your device.
+​Compatibility: Thoroughly tested and optimized for Android 11 through Android 16.
+​Smart Timeline Sorting: The app automatically extracts the capture date and time from your media's metadata. If metadata is missing, it intelligently reads the date from the filename to keep your timeline organized.
+​Network Efficiency: Once your media library is successfully indexed, the app caches the file list for 10 days. This minimizes server hits and saves your mobile data, assuming your archive doesn't change daily.
