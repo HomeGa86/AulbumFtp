@@ -2,6 +2,8 @@ package com.echo2080.picsync;
 
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -186,9 +188,30 @@ public class MainActivity extends AppCompatActivity {
             showLogDialog();
             return true;
         }
+        else if (id == R.id.action_copy_log) {
+            LogHelper logHelper = new LogHelper(this);
+            String logContent = logHelper.readAllLogFile(this);
+
+            if (logContent == null || logContent.trim().isEmpty()) {
+                Toast.makeText(this, "日志内容为空", Toast.LENGTH_SHORT).show();
+                return true;
+            }
+
+            copyToClipboard(logContent);
+            return true;
+        }
+
 
         return super.onOptionsItemSelected(item);
     }
+
+    private void copyToClipboard(String text) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("App Log", text);
+        clipboard.setPrimaryClip(clip);
+        Toast.makeText(this, R.string.log_copied_toast, Toast.LENGTH_SHORT).show();
+    }
+
 
     private void showLogDialog() {
         // 1. 创建 AlertDialog.Builder

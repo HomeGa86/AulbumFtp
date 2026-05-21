@@ -34,5 +34,7 @@
     <string name="backup_ftp_port">Backup FTP server port, 21 is default port (e.g. 21)</string>
     <string name="view_log">View Log</string>
     <string name="close">Close</string>
+    <string name="copy_log">Copy Log</string>
+    <string name="log_copied_toast">Logs copied into clipboard</string>
 
 </resources>

@@ -14,7 +14,7 @@ import java.util.Locale;
 
 public class LogHelper {
 
-    private static final long MAX_LOG_SIZE = 1024 * 1024; // 1MB
+    private static final long MAX_LOG_SIZE = 2 * 1024 * 1024; // 2MB
     private final Context context;
     // 💡 新增：用于同步的锁对象
     private static final Object lock = new Object();
@@ -99,6 +99,41 @@ public class LogHelper {
             } catch (IOException e) {
                 Log.e("LogHelper", "读取日志失败", e);
                 return "❌ 读取失败: " + e.getMessage();
+            }
+        }
+        return text.toString();
+    }
+
+    public String readAllLogFile(Context context) {
+        File logFile = new File(context.getExternalFilesDir(null), "log.log");
+
+        if (!logFile.exists()) {
+            return "Log file not existing: " + logFile.getAbsolutePath();
+        }
+
+        StringBuilder text = new StringBuilder();
+        synchronized (lock) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(logFile))) {
+                String line;
+                // 💡 使用 LinkedList 作为固定容量的滑动窗口
+                java.util.Deque<String> recentLines = new java.util.LinkedList<>();
+
+                while ((line = reader.readLine()) != null) {
+                    recentLines.addLast(line);
+                }
+
+                // 拼接结果
+                for (String l : recentLines) {
+                    text.append(l).append("\n");
+                }
+
+                if (text.length() == 0) {
+                    text.append("📄 日志文件为空");
+                }
+
+            } catch (IOException e) {
+                Log.e("LogHelper", "读取日志失败", e);
+                return "❌ 读取日志失败: " + e.getMessage();
             }
         }
         return text.toString();

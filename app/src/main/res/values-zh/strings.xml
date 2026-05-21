@@ -34,5 +34,7 @@
     <string name="backup_ftp_port">备用FTP服务器端口号(默认是21)</string>
     <string name="view_log">查看日志</string>
     <string name="close">关闭</string>
+    <string name="copy_log">复制日志</string>
+    <string name="log_copied_toast">日志已复制到剪贴板中</string>
 
 </resources>

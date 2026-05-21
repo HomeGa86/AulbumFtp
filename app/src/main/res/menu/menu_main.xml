@@ -15,4 +15,12 @@
         android:title="@string/view_log"
     android:icon="@android:drawable/ic_menu_info_details"
     app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_copy_log"
+        android:title="@string/copy_log"
+        android:icon="@android:drawable/ic_menu_info_details"
+        app:showAsAction="never" />
+
+
 </menu>

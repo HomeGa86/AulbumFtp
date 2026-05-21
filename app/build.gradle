@@ -36,12 +36,6 @@ android {
         }
     }
 
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -50,8 +44,6 @@ android {
 
 dependencies {
 
-    // 1. 核心KTX库，降级到 1.9.0，解决 SDK 34 的冲突
-    implementation "androidx.core:core-ktx:1.9.0"
 
     // 2. AppCompat库，使用稳定版本
     implementation 'androidx.appcompat:appcompat:1.6.1'
@@ -71,12 +63,6 @@ dependencies {
 
     // 7. 权限请求库
     implementation 'com.guolindev.permissionx:permissionx:1.7.1'
-
-    // 8. 生命周期库，降级以匹配 core-ktx 1.9.0
-    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.5.1'
-
-    implementation 'com.github.bumptech.glide:glide:4.15.1'
-    annotationProcessor 'com.github.bumptech.glide:compiler:4.15.1'
 
     implementation 'com.github.chrisbanes:PhotoView:2.3.0'
     implementation "androidx.room:room-runtime:2.5.2"
