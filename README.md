@@ -12,3 +12,4 @@ An android app to view pictures and videos on a ftp or sftp server, it auto down
    Original picture or video will be downloaded only when you click it in the app, and the original picture or video files are stored in a app sepecifc cache folder, the cache will be cleared when the app is closed.
    If the cache is not cleared when the app is closed, don't worry, the most Android system will automatically clear the cache when it thinks it's too large.
 5. Android 11 and Android 16 are tested
+6. The app will try to extract the capture date&time from the original pictures and videos, if the original pictures and videos don't have capture date&time, it will try to extract it from the file name. Capture date&time will be used to sort the pictures and videos in the app.
