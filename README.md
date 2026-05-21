@@ -1,0 +1,14 @@
+An android app to view pictures and videos on a ftp or sftp server, it auto downloads all pictures and videos from ftp server or sftp server and create small size local pictures to save storage, when you click a local picture or a video, it auto downloads the original picture from the ftp or sftp server
+1. Information Security
+   This app does not need to access your phone's folders (e.g. the photo folders or any other folders).
+   If will not ask you for permission to access your storage, so it's safe, don't worry to use it.
+   This app only write/read data from its own folder which is the app's specific folder, and read data from ftp/sftp server, so it's very safe.
+2. A downloaded file will not be downloaded again
+   A file is identified by its ftp full path excluding its host name and port (e.g. a file's id is /rootfolder/subfolder1/subfolder2/photo.jpg)
+   That means, if the folder structure doesn't change, the downloaded file will not be downloaded again even if you change a server host name or port.
+3. Below file types are supported
+   .jpg, .jpeg, .png, .gif, .bmp, .webp, .mp4, .mkv, .mov, .avi, .3gp
+4. Pictures and Videos will be downloaded, and a very small size thumbnail picture will be generated and stored on the phone. Video will not be store on your phone.
+   Original picture or video will be downloaded only when you click it in the app, and the original picture or video files are stored in a app sepecifc cache folder, the cache will be cleared when the app is closed.
+   If the cache is not cleared when the app is closed, don't worry, the most Android system will automatically clear the cache when it thinks it's too large.
+5. Android 11 and Android 16 are tested
