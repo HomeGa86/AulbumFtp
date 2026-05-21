@@ -2,7 +2,7 @@ An android app to view pictures and videos on a ftp or sftp server, it auto down
 This app's feature is to simulate a cloud photo of phones, but it is free. You can setup your ftp/sftp server with many free choices, sftp server is recommended because it's secure and it supports resuming download. This app only downloads pictures  or videos from a server, it does not upload any file to a server.
 1. Information Security
    This app does not need to access your phone's folders (e.g. the photo folders or any other folders).
-   If will not ask you for permission to access your storage, so it's safe, don't worry to use it.
+   It will not ask you for permission to access your storage, so it's safe, don't worry to use it.
    This app only write/read data from its own folder which is the app's specific folder, and read data from ftp/sftp server, so it's very safe.
 2. A downloaded file will not be downloaded again
    A file is identified by its ftp full path excluding its host name and port (e.g. a file's id is /rootfolder/subfolder1/subfolder2/photo.jpg)
