@@ -11,6 +11,6 @@ This app's feature is to simulate a cloud photo of phones, but it is free. You c
    .jpg, .jpeg, .png, .gif, .bmp, .webp, .mp4, .mkv, .mov, .avi, .3gp
 4. Pictures and Videos will be downloaded, and a very small size thumbnail picture will be generated and stored on the phone. Video will not be store on your phone.
    Original picture or video will be downloaded only when you click it in the app, and the original picture or video files are stored in a app sepecifc cache folder, the cache will be cleared when the app is closed.
-   If the cache is not cleared when the app is closed, don't worry, the most Android system will automatically clear the cache when it thinks it's too large.
+   If the cache is not cleared when the app is closed, don't worry, most Android systems will automatically clear the cache when it thinks it's too large.
 5. Android 11 and Android 16 are tested
-6. The app will try to extract the capture date&time from the original pictures and videos, if the original pictures and videos don't have capture date&time, it will try to extract it from the file name. Capture date&time will be used to sort the pictures and videos in the app.
+6. The app will try to extract the capture date&time from the original pictures and videos, if the original pictures and videos don't have a capture date&time, the app will try to extract it from the file name. Capture date&time will be used to sort the pictures and videos in the app.
