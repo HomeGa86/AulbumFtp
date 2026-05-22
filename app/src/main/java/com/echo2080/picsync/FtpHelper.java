@@ -91,6 +91,7 @@ public class FtpHelper implements FtpInterface {
     private boolean connectToServer(String host, int port, String user, String password) {
         try {
             ftpClient = new FTPClient();
+            ftpClient.setControlEncoding("UTF-8");
 
             // 设置连接超时时间（比如10秒），防止卡死太久
             ftpClient.setConnectTimeout(10000);
