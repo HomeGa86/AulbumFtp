@@ -36,5 +36,7 @@
     <string name="close">Close</string>
     <string name="copy_log">Copy Log</string>
     <string name="log_copied_toast">Logs copied into clipboard</string>
+    <string name="reconnected">Server reconnected</string>
+    <string name="reconnecting" >Reconnecting</string>
 
 </resources>

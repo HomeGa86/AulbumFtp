@@ -240,13 +240,30 @@ public class SyncService extends Service implements DownloadProgressListener {
 
                     // 💡 FIX: 重试时重置进度并更新通知显示重试状态
                     this.currentProgress = 0;
-                    this.progressText = "重试 " + retryCount + "/" + MAX_RETRY;
+                    this.progressText = getString(R.string.reconnecting) + retryCount + "/" + MAX_RETRY;
                     updateNotification(MessageFormat.format(
                             getString(R.string.downloading),
                             current, total, fileName + " (" + this.progressText + ")"
                     ));
 
                     boolean reconnectSuccess = ftpHelper.reconnect(this);
+                    if(reconnectSuccess)
+                    {
+                        //After reconnected, sleep for a while to wait the connection to be stable
+                        try { Thread.sleep(1000); } catch (InterruptedException e) {
+                            logHelper.logToFile("Failed to sleep for" + 1000);
+                            logHelper.logToFile(android.util.Log.getStackTraceString(e));
+                        }
+                        retryCount=0;
+                        logHelper.logToFile(getString(R.string.reconnected) + ":" + remotePath);
+                        updateNotification(getString(R.string.reconnected));
+                    }
+                    else
+                    {
+                        retryCount++;
+                        logHelper.logToFile("Failed to reconnect:" + remotePath);
+                        continue;
+                    }
                 }
 
                 // 💡 智能判断：如果是 SftpHelper 且已经有部分下载数据，则调用断点续传方法
