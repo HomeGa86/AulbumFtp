@@ -150,11 +150,14 @@ public class MainActivity extends AppCompatActivity {
                     editor.apply();
 
                     Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show();
-                    AppDatabase db = AppDatabase.getInstance(this);
-                    db.serverFileDao().deleteAll();
-                    Log.d("MainActivity", "FTP配置已更改，已清空服务器文件缓存表。");
-                    SyncService.resetFullSyncTimestamp(this);
-                    startSyncServiceWithDelay();
+
+                    new Thread(() -> {
+                        database.serverFileDao().deleteAll();
+                        Log.d("MainActivity", "FTP配置已更改，已清空服务器文件缓存表。");
+
+                        SyncService.resetFullSyncTimestamp(this);
+                        startSyncServiceWithDelay();
+                    }).start();
                 })
                 .setNegativeButton(oldHost == null ? null : R.string.cancel, null)
                 .show();
