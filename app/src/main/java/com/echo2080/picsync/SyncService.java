@@ -175,18 +175,17 @@ public class SyncService extends Service implements DownloadProgressListener {
         {
             try {
                 ftpHelper.listAllFiles(basePath, allRemoteFiles);
+                List<ServerFileEntity> entities = new ArrayList<>();
+                for (String path : allRemoteFiles) {
+                    entities.add(new ServerFileEntity(path));
+                }
+                serverFileDao.insertAll(entities);
             } catch (Exception exception) {
                 updateNotification(getString(R.string.failed_to_load_list));
                 isRunning.set(false);
                 return;
             }
         }
-
-        List<ServerFileEntity> entities = new ArrayList<>();
-        for (String path : allRemoteFiles) {
-            entities.add(new ServerFileEntity(path));
-        }
-        serverFileDao.insertAll(entities);
 
 
         Log.d(TAG, "FTP 上共有 " + allRemoteFiles.size() + " 个文件");
@@ -234,26 +233,23 @@ public class SyncService extends Service implements DownloadProgressListener {
             while (!downloadSuccess && retryCount < MAX_RETRY) {
                 if (retryCount > 0) {
                     Log.w(TAG, "准备第 " + retryCount + " 次重试下载: " + fileName + " (已从 " + downloadedBytes + " 字节处继续)");
-                    try { Thread.sleep(1000 * retryCount); } catch (InterruptedException e) {}
-
-                    // 💡 关键改动：重连服务器
-                    boolean reconnectSuccess = ftpHelper.reconnect(this);
-                    if (!reconnectSuccess) {
-                        Log.e(TAG, "FTP/SFTP 重连失败，放弃下载: " + remotePath);
-                        logHelper.logToFile("reconnect failed for file:" + remotePath);
-                        break;
+                    try { Thread.sleep(1000 * retryCount); } catch (InterruptedException e) {
+                        logHelper.logToFile("Failed to sleep for" + 1000 * retryCount);
+                        logHelper.logToFile(android.util.Log.getStackTraceString(e));
                     }
+
+                    boolean reconnectSuccess = ftpHelper.reconnect(this);
                 }
 
                 // 💡 智能判断：如果是 SftpHelper 且已经有部分下载数据，则调用断点续传方法
                 if (ftpHelper instanceof SftpHelper && downloadedBytes > 0) {
                     SftpHelper sftpHelper = (SftpHelper) ftpHelper;
                     // 传入当前的 downloadedBytes 作为起始偏移量
-                    downloadSuccess = sftpHelper.downloadFileWithResume(remotePath, tempFile, downloadedBytes, null);
+                    downloadSuccess = sftpHelper.downloadFileWithResume(remotePath, tempFile, downloadedBytes, this);
                 } else {
                     // 普通 FtpHelper 或者第一次下载，走原有逻辑
                     // 注意：你的 FtpInterface 里的 downloadFile 最好也支持传入 listener，这里暂用 null
-                    downloadSuccess = ftpHelper.downloadFile(remotePath, tempFile, null);
+                    downloadSuccess = ftpHelper.downloadFile(remotePath, tempFile, this);
                 }
 
                 if (downloadSuccess) {
@@ -498,8 +494,8 @@ public class SyncService extends Service implements DownloadProgressListener {
         public void run() {
             if (isRunning.get()) {
                 String content = MessageFormat.format(
-                        "{0}/{1} | {2}% | {3} | {4}",
-                        currentFileIndex, totalFiles, currentProgress, progressText, currentFileName
+                        "{0}/{1}|{2}|{3}",
+                        currentFileIndex, totalFiles, progressText, currentFileName
                 );
                 updateNotification(content);
                 // 重复发送自己，保持 10 秒一次的节奏

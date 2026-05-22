@@ -307,10 +307,6 @@ public class SftpHelper implements FtpInterface {
                 }
                 mainHandler.post(() -> listener.onFinish(isSuccess));
             }
-            // 如果下载失败，删除本地未完成的残次品文件
-            if (!downloadSuccess && localFile.exists()) {
-                localFile.delete();
-            }
         }
         return downloadSuccess;
     }

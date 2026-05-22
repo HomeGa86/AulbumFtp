@@ -50,7 +50,8 @@ public abstract class AppDatabase extends RoomDatabase {
     static final Migration MIGRATION_4_5 = new Migration(4, 5) {
         @Override
         public void migrate(@NonNull SupportSQLiteDatabase database) {
-            database.execSQL("CREATE TABLE IF NOT EXISTS `server_files` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `filePath` TEXT NOT NULL, UNIQUE(`filePath`))");
+            database.execSQL("CREATE TABLE IF NOT EXISTS `server_files` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `filePath` TEXT)");
+            database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_server_files_filePath` ON `server_files` (`filePath`)");
         }
     };
 
