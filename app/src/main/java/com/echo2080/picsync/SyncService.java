@@ -238,6 +238,14 @@ public class SyncService extends Service implements DownloadProgressListener {
                         logHelper.logToFile(android.util.Log.getStackTraceString(e));
                     }
 
+                    // 💡 FIX: 重试时重置进度并更新通知显示重试状态
+                    this.currentProgress = 0;
+                    this.progressText = "重试 " + retryCount + "/" + MAX_RETRY;
+                    updateNotification(MessageFormat.format(
+                            getString(R.string.downloading),
+                            current, total, fileName + " (" + this.progressText + ")"
+                    ));
+
                     boolean reconnectSuccess = ftpHelper.reconnect(this);
                 }
 
@@ -258,7 +266,7 @@ public class SyncService extends Service implements DownloadProgressListener {
 
                 // 💡 下载失败的处理逻辑
                 if (tempFile.exists()) {
-                    // 更新已下载的字节数，为下一次“断点续传”做准备
+                    // 更新已下载的字节数，为下一次"断点续传"做准备
                     downloadedBytes = tempFile.length();
                     Log.d(TAG, "下载中断，本地临时文件大小: " + downloadedBytes + " bytes");
                 } else {
