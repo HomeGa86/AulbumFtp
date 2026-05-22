@@ -24,7 +24,6 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
-import com.jcraft.jsch.SftpException;
 
 import java.io.BufferedWriter;
 import java.io.File;

@@ -354,7 +354,7 @@ public class SftpHelper implements FtpInterface {
 
                     @Override
                     public void end() {}
-                }, ChannelSftp.OVERWRITE, startOffset); // 💡 核心：传入 startOffset，让 JSch 从指定位置开始拉取数据
+                }, ChannelSftp.RESUME, startOffset); // 💡 核心：传入 startOffset，让 JSch 从指定位置开始拉取数据
 
                 downloadSuccess = true;
             }
