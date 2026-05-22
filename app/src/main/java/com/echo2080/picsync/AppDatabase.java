@@ -13,9 +13,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 @Database(
         entities = {
                 ImageFtpEntity.class,
-                DownloadedFileEntity.class
+                DownloadedFileEntity.class,
+                ServerFileEntity.class
         },
-        version = 4,  // ⬅️ 1. 从 3 升级到 4
+        version = 5,
         exportSchema = false
 )
 @TypeConverters({Converters.class})
@@ -23,6 +24,8 @@ public abstract class AppDatabase extends RoomDatabase {
 
     public abstract ImageFtpDao imageFtpDao();
     public abstract DownloadedFileDao downloadedFileDao();
+    public abstract ServerFileDao serverFileDao(); // 3. 添加新 DAO
+
 
     private static volatile AppDatabase INSTANCE;
 
@@ -44,6 +47,14 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    static final Migration MIGRATION_4_5 = new Migration(4, 5) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("CREATE TABLE IF NOT EXISTS `server_files` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `filePath` TEXT NOT NULL, UNIQUE(`filePath`))");
+        }
+    };
+
+
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
             synchronized (AppDatabase.class) {
@@ -53,7 +64,7 @@ public abstract class AppDatabase extends RoomDatabase {
                             AppDatabase.class,
                             "pic_sync_db"
                     )
-                            .addMigrations(MIGRATION_2_3, MIGRATION_3_4) // ⬅️ 4. 将新脚本添加到这里
+                            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5) // 5. 注册新迁移脚本
                             .build();
                 }
             }

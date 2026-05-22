@@ -150,6 +150,9 @@ public class MainActivity extends AppCompatActivity {
                     editor.apply();
 
                     Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show();
+                    AppDatabase db = AppDatabase.getInstance(this);
+                    db.serverFileDao().deleteAll();
+                    Log.d("MainActivity", "FTP配置已更改，已清空服务器文件缓存表。");
                     SyncService.resetFullSyncTimestamp(this);
                     startSyncServiceWithDelay();
                 })
@@ -193,7 +196,7 @@ public class MainActivity extends AppCompatActivity {
             String logContent = logHelper.readAllLogFile(this);
 
             if (logContent == null || logContent.trim().isEmpty()) {
-                Toast.makeText(this, "日志内容为空", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "No logs", Toast.LENGTH_SHORT).show();
                 return true;
             }
 

@@ -41,7 +41,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class SyncService extends Service {
+public class SyncService extends Service implements DownloadProgressListener {
 
     private static final String TAG = "SyncService";
     private static final String CHANNEL_ID = "sync_channel";
@@ -59,6 +59,11 @@ public class SyncService extends Service {
     private AtomicBoolean isRunning = new AtomicBoolean(false);
 
     private File thumbnailDir;
+    private int currentProgress;
+    private String progressText;
+    private int currentFileIndex;
+    private String currentFileName;
+    private int totalFiles;
 
     public static void resetFullSyncTimestamp(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -97,16 +102,18 @@ public class SyncService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        startForeground(NOTIFICATION_ID, createNotification("正在检查同步状态..."));
 
         if (isRunning.get()) {
             return START_STICKY;
         }
+        startForeground(NOTIFICATION_ID, createNotification("正在检查同步状态..."));
 
         executor.execute(() -> {
             try {
                 syncAllFiles(); // ⬅️ 内部改为通用的多媒体同步
             } finally {
+                isRunning.set(false);
+                stopForeground(STOP_FOREGROUND_REMOVE);
                 mainHandler.post(this::stopSelf);
             }
         });
@@ -157,13 +164,30 @@ public class SyncService extends Service {
 
         List<String> allRemoteFiles = new ArrayList<>();
         updateNotification(getString(R.string.loading_file_list));
-        try {
-            ftpHelper.listAllFiles(basePath, allRemoteFiles);
-        } catch (Exception exception) {
-            updateNotification(getString(R.string.failed_to_load_list));
-            isRunning.set(false);
-            return;
+        ServerFileDao serverFileDao = database.serverFileDao();
+        List<String> cachedFilesList = serverFileDao.getAllFilePaths();
+        if (cachedFilesList != null && !cachedFilesList.isEmpty()) {
+            allRemoteFiles.addAll(cachedFilesList);
+            logHelper.logToFile("Load file list from local database, no need to get list from server");
+            Log.d(TAG, "命中缓存：从本地数据库加载了 " + allRemoteFiles.size() + " 个服务器文件路径。");
         }
+        else
+        {
+            try {
+                ftpHelper.listAllFiles(basePath, allRemoteFiles);
+            } catch (Exception exception) {
+                updateNotification(getString(R.string.failed_to_load_list));
+                isRunning.set(false);
+                return;
+            }
+        }
+
+        List<ServerFileEntity> entities = new ArrayList<>();
+        for (String path : allRemoteFiles) {
+            entities.add(new ServerFileEntity(path));
+        }
+        serverFileDao.insertAll(entities);
+
 
         Log.d(TAG, "FTP 上共有 " + allRemoteFiles.size() + " 个文件");
         logHelper.logToFile("Total files on server:" + allRemoteFiles.size());
@@ -185,10 +209,16 @@ public class SyncService extends Service {
         int failedToDownloadCount = 0;
 
         boolean isFullSuccess = (total == 0);
+        this.totalFiles = newFiles.size();
+        updateHandler.postDelayed(updateNotificationRunnable, UPDATE_INTERVAL);
 
         for (String remotePath : newFiles) {
             current++;
             String fileName = remotePath.substring(remotePath.lastIndexOf("/") + 1);
+            this.currentFileIndex = current; // 从1开始计数
+            this.currentFileName = fileName;
+            this.currentProgress = 0; // 重置进度
+            this.progressText = "";
 
             updateNotification(MessageFormat.format(getString(R.string.downloading), current, total, fileName));
 
@@ -387,6 +417,7 @@ public class SyncService extends Service {
 
 
         ftpHelper.disconnect();
+        updateHandler.removeCallbacks(updateNotificationRunnable);
         isRunning.set(false);
 
         if (successCount > 0) {
@@ -457,9 +488,45 @@ public class SyncService extends Service {
         });
     }
 
+    // 用于节流通知更新的 Handler
+    private final Handler updateHandler = new Handler(Looper.getMainLooper());
+    private static final long UPDATE_INTERVAL = 10000; // 10秒
+
+    // 3. Runnable 用于更新通知栏
+    private final Runnable updateNotificationRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isRunning.get()) {
+                String content = MessageFormat.format(
+                        "{0}/{1} | {2}% | {3} | {4}",
+                        currentFileIndex, totalFiles, currentProgress, progressText, currentFileName
+                );
+                updateNotification(content);
+                // 重复发送自己，保持 10 秒一次的节奏
+                updateHandler.postDelayed(this, UPDATE_INTERVAL);
+            }
+        }
+    };
+
+    @Override
+    public void onProgress(int progress, String progressText) {
+        this.currentProgress = progress;
+        this.progressText = progressText;
+        // 注意：这里不直接更新通知，而是依赖定时器
+    }
+
+    @Override
+    public void onFinish(boolean success) {
+        // 下载完成后的处理
+    }
+
+
+
     @Override
     public void onDestroy() {
         super.onDestroy();
+        isRunning.set(false);
+        stopForeground(STOP_FOREGROUND_REMOVE);
         if (executor != null && !executor.isShutdown()) {
             executor.shutdown();
         }
