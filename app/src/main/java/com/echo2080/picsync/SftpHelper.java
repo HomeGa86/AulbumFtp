@@ -316,48 +316,55 @@ public class SftpHelper implements FtpInterface {
         long fileSize = getFileSize(remoteFilePath);
 
         try {
-            // 💡 关键改动：使用 "a" (append) 模式打开 FileOutputStream
-            // 这样写入的数据会追加到现有文件后面，而不是覆盖它！
-            try (FileOutputStream fos = new FileOutputStream(localFile, true)) {
+            // 💡 FIX: Pass localFile.getAbsolutePath() instead of an OutputStream.
+            // JSch will automatically open the file in append mode when ChannelSftp.RESUME is active.
+            channelSftp.get(remoteFilePath, localFile.getAbsolutePath(), new com.jcraft.jsch.SftpProgressMonitor() {
+                long totalBytesRead = 0;
+                long bytesTransferredThisSession = 0; // 💡 Tracks only network traffic since resume
+                long lastUpdate = System.currentTimeMillis();
+                long startTime = System.currentTimeMillis();
 
-                channelSftp.get(remoteFilePath, fos, new com.jcraft.jsch.SftpProgressMonitor() {
-                    // 💡 关键改动：totalBytesRead 初始值设为 startOffset
-                    long totalBytesRead = startOffset;
-                    long lastUpdate = System.currentTimeMillis();
-                    long startTime = System.currentTimeMillis();
+                @Override
+                public void init(int op, String src, String dest, long max) {
+                    // JSch tells us 'max' (remaining bytes).
+                    // So, the bytes we already have = total - remaining.
+                    this.totalBytesRead = fileSize - max;
+                    this.bytesTransferredThisSession = 0;
+                    this.startTime = System.currentTimeMillis();
+                    this.lastUpdate = System.currentTimeMillis();
+                }
 
-                    @Override
-                    public void init(int op, String src, String dest, long max) {}
+                @Override
+                public boolean count(long count) {
+                    totalBytesRead += count;
+                    bytesTransferredThisSession += count; // Increment network bytes
+                    long currentTime = System.currentTimeMillis();
 
-                    @Override
-                    public boolean count(long count) {
-                        totalBytesRead += count;
-                        long currentTime = System.currentTimeMillis();
+                    if (currentTime - lastUpdate > 1000 && fileSize > 0) {
+                        long timeElapsed = (currentTime - startTime) / 1000;
+                        if (timeElapsed <= 0) timeElapsed = 1;
 
-                        if (currentTime - lastUpdate > 1000 && fileSize > 0) {
-                            long timeElapsed = (currentTime - startTime) / 1000;
-                            if (timeElapsed <= 0) timeElapsed = 1; // 避免除以0
+                        // Current speed is strictly based on actual network throughput since the resume
+                        long speedBytesPerSec = bytesTransferredThisSession / timeElapsed;
 
-                            long speedBytesPerSec = (totalBytesRead - startOffset) / timeElapsed;
-                            String progressPercent = String.format("%.2f%%", (totalBytesRead * 100.0 / fileSize));
-                            String speed = formatSize(speedBytesPerSec) + "/s";
-                            String statusText = progressPercent + " - " + speed;
-                            int intProgress = (int) ((totalBytesRead * 100L) / fileSize);
+                        String progressPercent = String.format("%.2f%%", (totalBytesRead * 100.0 / fileSize));
+                        String speed = formatSize(speedBytesPerSec) + "/s";
+                        String statusText = progressPercent + " - " + speed;
+                        int intProgress = (int) ((totalBytesRead * 100L) / fileSize);
 
-                            if (listener != null) {
-                                mainHandler.post(() -> listener.onProgress(intProgress, statusText));
-                            }
+                        if (listener != null) {
+                            mainHandler.post(() -> listener.onProgress(intProgress, statusText));
                         }
                         lastUpdate = currentTime;
-                        return true;
                     }
+                    return true;
+                }
 
-                    @Override
-                    public void end() {}
-                }, ChannelSftp.RESUME, startOffset); // 💡 核心：传入 startOffset，让 JSch 从指定位置开始拉取数据
+                @Override
+                public void end() {}
+            }, ChannelSftp.RESUME);
 
-                downloadSuccess = true;
-            }
+            downloadSuccess = true;
         } catch (Exception e) {
             logHelper.logToFile("Failed to download file with resume: " + remoteFilePath);
             logHelper.logToFile(android.util.Log.getStackTraceString(e));
@@ -367,7 +374,7 @@ public class SftpHelper implements FtpInterface {
             if (listener != null) {
                 final boolean isSuccess = downloadSuccess;
                 if (isSuccess) {
-                    mainHandler.post(() -> listener.onProgress(100,"100.00%"));
+                    mainHandler.post(() -> listener.onProgress(100, "100.00%"));
                 }
                 mainHandler.post(() -> listener.onFinish(isSuccess));
             }

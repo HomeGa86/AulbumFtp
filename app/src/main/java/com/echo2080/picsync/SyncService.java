@@ -221,6 +221,8 @@ public class SyncService extends Service implements DownloadProgressListener {
             updateNotification(MessageFormat.format(getString(R.string.downloading), current, total, fileName));
 
             File tempFile = new File(getCacheDir(), "temp_" + fileName);
+            if (tempFile.exists()) tempFile.delete(); // Delete the file first
+
 
             boolean downloadSuccess = false;
             int retryCount = 0;
@@ -232,8 +234,8 @@ public class SyncService extends Service implements DownloadProgressListener {
             while (!downloadSuccess && retryCount < MAX_RETRY) {
                 if (retryCount > 0) {
                     Log.w(TAG, "准备第 " + retryCount + " 次重试下载: " + fileName + " (已从 " + downloadedBytes + " 字节处继续)");
-                    try { Thread.sleep(1000 * retryCount); } catch (InterruptedException e) {
-                        logHelper.logToFile("Failed to sleep for" + 1000 * retryCount);
+                    try { Thread.sleep(10000 * retryCount); } catch (InterruptedException e) {
+                        logHelper.logToFile("Failed to sleep for" + 10000 * retryCount);
                         logHelper.logToFile(android.util.Log.getStackTraceString(e));
                     }
 
