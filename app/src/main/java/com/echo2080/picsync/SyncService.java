@@ -427,6 +427,13 @@ public class SyncService extends Service implements DownloadProgressListener {
                 logHelper.logToFile("Failed to generate thumbnail, parseSuccess is false or thumbnailPath is null:" + tempFile.getAbsolutePath());
                 tempFile.delete(); // 清理残留空间
                 failedToProcessCount++;
+                if(fileType == FileType.VIDEO)
+                {
+                    //Ignore this file in the future, don't download it again
+                    database.downloadedFileDao().insert(
+                            new DownloadedFileEntity(remotePath, "", System.currentTimeMillis(), captureTime, fileType)
+                    );
+                }
                 continue;
             }
 
