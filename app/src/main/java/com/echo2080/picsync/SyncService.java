@@ -326,99 +326,21 @@ public class SyncService extends Service implements DownloadProgressListener {
             String thumbnailPath = null;
 
             if (fileType == FileType.VIDEO) {
-                // 🎬 视频流处理分支
-                if (!tempFile.exists() || tempFile.length() == 0 || !tempFile.canRead()) {
-                    logHelper.logToFile("Video file not accessible for thumbnail: " + tempFile.getAbsolutePath());
-                    continue;
-                }
-                MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-                boolean retrieverReady = false;
-                try {
-                    try {
-                        // First try path-based
-                        retriever.setDataSource(tempFile.getAbsolutePath());
-                        retrieverReady = true;
-                    } catch (RuntimeException e) {
-                        logHelper.logToFile("setDataSource(path) failed for " + tempFile.getAbsolutePath() + ": " + e.getClass().getName() + ": " + e.getMessage());
-                        // Try fallback with FileDescriptor
-                        try (FileInputStream fis = new FileInputStream(tempFile)) {
-                            retriever.setDataSource(fis.getFD());
-                            retrieverReady = true;
-                        } catch (Exception ex2) {
-                            logHelper.logToFile("setDataSource(FileDescriptor) ALSO failed for " + tempFile.getAbsolutePath() + ": " + ex2.getClass().getName() + ": " + ex2.getMessage());
-                        }
-                    }
-
-                    if (retrieverReady) {
-                        String width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
-                        String height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
-
-                        if (width != null && height != null && Integer.parseInt(width) > 0 && Integer.parseInt(height) > 0) {
-                            parseSuccess = true;
-
-                            // ⬅️【关键改动】：调用我们写的方法，精准获取视频的拍摄时间
-                            captureTime = ThumbnailHelper.getVideoCaptureTime(tempFile.getAbsolutePath(), fileName);
-
-                            // 更健壮的视频帧提取尝试：用多个时间点，直到成功为止
-                            Bitmap videoFrame = null;
-                            long[] candidateTimestamps = {0, 500_000, 1_000_000, 2_000_000, 5_000_000}; // 单位: 微秒
-                            for (long t : candidateTimestamps) {
-                                videoFrame = retriever.getFrameAtTime(t, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
-                                if (videoFrame != null) {
-                                    break;
-                                }
-                            }
-                            if (videoFrame != null) {
-                                try (FileOutputStream fos = new FileOutputStream(thumbnailFile)) {
-                                    videoFrame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
-                                    thumbnailPath = thumbnailFile.getAbsolutePath();
-                                } catch (Exception ex) {
-                                    logHelper.logToFile("Failed to generate thumbnail, videoFrame.compress failed:" + tempFile.getAbsolutePath());
-                                    logHelper.logToFile(android.util.Log.getStackTraceString(ex));
-                                }
-                                videoFrame.recycle();
-                            } else {
-                                logHelper.logToFile("Failed to generate thumbnail, all candidate videoFrame extractions returned null: " + tempFile.getAbsolutePath());
-                            }
-                        } else {
-                            logHelper.logToFile("Failed to generate thumbnail or capture time, width or height is not right:" + tempFile.getAbsolutePath());
-                        }
-                    } else {
-                        logHelper.logToFile("Failed to set data source for MediaMetadataRetriever: " + tempFile.getAbsolutePath());
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "解析视频或提取首帧失败: " + fileName, e);
-                    logHelper.logToFile("Failed to generate thumbnail or capture time:" + tempFile.getAbsolutePath());
-                    logHelper.logToFile(android.util.Log.getStackTraceString(e));
-                } finally {
-                    try { retriever.release(); } catch (IOException ignored) {
-                        logHelper.logToFile("Failed to release retriever:" + tempFile.getAbsolutePath());
-                    }
-                }
-            } else {
-                // 🖼️ 图片流处理分支
-                BitmapFactory.Options checkOptions = new BitmapFactory.Options();
-                checkOptions.inJustDecodeBounds = true;
-                BitmapFactory.decodeFile(tempFile.getAbsolutePath(), checkOptions);
-
-                if (checkOptions.outWidth > 0 && checkOptions.outHeight > 0) {
+                thumbnailPath = ThumbnailHelper.createAndSaveThumbnailForVideo(tempFile, thumbnailFile, logHelper);
+                if(thumbnailPath != null){
                     parseSuccess = true;
+                    captureTime = ThumbnailHelper.getVideoCaptureTime(tempFile.getAbsolutePath(), fileName);
+                    }
+
+            } else {
                     thumbnailPath = ThumbnailHelper.createAndSaveThumbnail(tempFile, thumbnailFile, logHelper);
                     if (thumbnailPath != null) {
+                        parseSuccess = true;
                         ThumbnailHelper.ExifInfo exifInfo = ThumbnailHelper.copyExifInfo(tempFile, thumbnailFile);
                         if (exifInfo != null && exifInfo.captureTime > 0) {
                             captureTime = exifInfo.captureTime;
                         }
                     }
-                    else
-                    {
-                        logHelper.logToFile("Failed to generate thumbnail or capture time, thumbnailPath is null:" + tempFile.getAbsolutePath());
-                    }
-                }
-                else
-                {
-                    logHelper.logToFile("Failed to generate thumbnail, width or height is not right:" + tempFile.getAbsolutePath());
-                }
             }
 
             // 校验解析与缩略图是否生成成功

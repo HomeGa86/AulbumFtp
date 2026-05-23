@@ -14,6 +14,7 @@ import com.bumptech.glide.request.target.CustomTarget;
 import com.bumptech.glide.request.transition.Transition;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -40,7 +41,17 @@ public class ThumbnailHelper {
     public static String createAndSaveThumbnail(File originalFile, File targetFile, LogHelper logHelper) {
         Log.d(TAG, "开始处理: " + originalFile.getAbsolutePath());
 
-        if (!originalFile.exists()) {
+        BitmapFactory.Options checkOptions = new BitmapFactory.Options();
+        checkOptions.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(originalFile.getAbsolutePath(), checkOptions);
+
+        if (checkOptions.outWidth <= 0 || checkOptions.outHeight <= 0) {
+            logHelper.logToFile("Failed to generate thumbnail, width or height is not right:" + originalFile.getAbsolutePath());
+            return null;
+        }
+
+
+            if (!originalFile.exists()) {
             Log.e(TAG, "源文件不存在");
             logHelper.logToFile("createAndSaveThumbnail failed, file not existing:" + originalFile.getAbsolutePath());
             return null;
@@ -128,9 +139,76 @@ public class ThumbnailHelper {
         }
     }
 
-    /**
-     * 将原图的 EXIF 信息（拍摄日期、地点、相机参数等）复制到缩略图中
-     */
+    public static String createAndSaveThumbnailForVideo(File originalFile, File targetFile, LogHelper logHelper) {
+        // 🎬 视频流处理分支
+        if (!originalFile.exists() || originalFile.length() == 0 || !originalFile.canRead()) {
+            logHelper.logToFile("Video file not accessible for thumbnail: " + originalFile.getAbsolutePath());
+            return null;
+        }
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        boolean retrieverReady = false;
+        try {
+            try {
+                // First try path-based
+                retriever.setDataSource(originalFile.getAbsolutePath());
+                retrieverReady = true;
+            } catch (RuntimeException e) {
+                logHelper.logToFile("setDataSource(path) failed for " + originalFile.getAbsolutePath() + ": " + e.getClass().getName() + ": " + e.getMessage());
+                // Try fallback with FileDescriptor
+                try (FileInputStream fis = new FileInputStream(originalFile)) {
+                    retriever.setDataSource(fis.getFD());
+                    retrieverReady = true;
+                } catch (Exception ex2) {
+                    logHelper.logToFile("setDataSource(FileDescriptor) ALSO failed for " + originalFile.getAbsolutePath() + ": " + ex2.getClass().getName() + ": " + ex2.getMessage());
+                }
+            }
+
+            if (retrieverReady) {
+                String width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+                String height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+
+                if (width != null && height != null && Integer.parseInt(width) > 0 && Integer.parseInt(height) > 0) {
+                    // 更健壮的视频帧提取尝试：用多个时间点，直到成功为止
+                    Bitmap videoFrame = null;
+                    long[] candidateTimestamps = {0, 500_000, 1_000_000, 2_000_000, 5_000_000}; // 单位: 微秒
+                    for (long t : candidateTimestamps) {
+                        videoFrame = retriever.getFrameAtTime(t, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                        if (videoFrame != null) {
+                            break;
+                        }
+                    }
+                    if (videoFrame != null) {
+                        try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+                            videoFrame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                            return targetFile.getAbsolutePath();
+                        } catch (Exception ex) {
+                            logHelper.logToFile("Failed to generate thumbnail, videoFrame.compress failed:" + originalFile.getAbsolutePath());
+                            logHelper.logToFile(android.util.Log.getStackTraceString(ex));
+                        }
+                        videoFrame.recycle();
+                    } else {
+                        logHelper.logToFile("Failed to generate thumbnail, all candidate videoFrame extractions returned null: " + originalFile.getAbsolutePath());
+                    }
+                } else {
+                    logHelper.logToFile("Failed to generate thumbnail or capture time, width or height is not right:" + originalFile.getAbsolutePath());
+                }
+            } else {
+                logHelper.logToFile("Failed to set data source for MediaMetadataRetriever: " + originalFile.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            logHelper.logToFile("Failed to generate thumbnail or capture time:" + originalFile.getAbsolutePath());
+            logHelper.logToFile(android.util.Log.getStackTraceString(e));
+        } finally {
+            try { retriever.release(); } catch (IOException ignored) {
+                logHelper.logToFile("Failed to release retriever:" + originalFile.getAbsolutePath());
+            }
+        }
+        return null;
+    }
+
+        /**
+         * 将原图的 EXIF 信息（拍摄日期、地点、相机参数等）复制到缩略图中
+         */
     public static ExifInfo copyExifInfo(File sourceFile, File destFile) {
         long captureTime = 0;
         double latitude = 0.0;
