@@ -24,7 +24,6 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
-
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -339,28 +338,28 @@ public class SyncService extends Service implements DownloadProgressListener {
                         // ⬅️【关键改动】：调用我们写的方法，精准获取视频的拍摄时间
                         captureTime = ThumbnailHelper.getVideoCaptureTime(tempFile.getAbsolutePath(), fileName);
 
-                        // 提取第一帧作为微缩图
-                        Bitmap videoFrame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                        // 更健壮的视频帧提取尝试：用多个时间点，直到成功为止
+                        Bitmap videoFrame = null;
+                        long[] candidateTimestamps = {0, 500_000, 1_000_000, 2_000_000, 5_000_000}; // 单位: 微秒
+                        for (long t : candidateTimestamps) {
+                            videoFrame = retriever.getFrameAtTime(t, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                            if (videoFrame != null) {
+                                break;
+                            }
+                        }
                         if (videoFrame != null) {
-                            // 将视频首帧压缩并保存到本地缩略图目录
                             try (FileOutputStream fos = new FileOutputStream(thumbnailFile)) {
                                 videoFrame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
                                 thumbnailPath = thumbnailFile.getAbsolutePath();
-                            }
-                            catch (Exception ex)
-                            {
+                            } catch (Exception ex) {
                                 logHelper.logToFile("Failed to generate thumbnail, videoFrame.compress failed:" + tempFile.getAbsolutePath());
                                 logHelper.logToFile(android.util.Log.getStackTraceString(ex));
                             }
                             videoFrame.recycle();
+                        } else {
+                            logHelper.logToFile("Failed to generate thumbnail, all candidate videoFrame extractions returned null: " + tempFile.getAbsolutePath());
                         }
-                        else
-                        {
-                            logHelper.logToFile("Failed to generate thumbnail, videoFrame is null:" + tempFile.getAbsolutePath());
-                        }
-                    }
-                    else
-                    {
+                    } else {
                         logHelper.logToFile("Failed to generate thumbnail or capture time, width or height is not right:" + tempFile.getAbsolutePath());
                     }
                 } catch (Exception e) {
@@ -554,3 +553,4 @@ public class SyncService extends Service implements DownloadProgressListener {
         }
     }
 }
+
