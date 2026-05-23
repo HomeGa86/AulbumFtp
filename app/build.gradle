@@ -3,6 +3,7 @@ plugins {
 }
 
 android {
+
     compileSdkVersion 33
     buildToolsVersion "33.0.0"
 
@@ -73,8 +74,7 @@ dependencies {
     //sftp:
     implementation 'com.github.mwiede:jsch:0.2.11'
 
-
-
+    implementation 'com.github.arthenica:ffmpeg-kit:v6.0'
 
     // 测试依赖
     testImplementation 'junit:junit:4.13.2'

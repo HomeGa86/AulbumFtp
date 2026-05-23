@@ -352,9 +352,9 @@ public class SyncService extends Service implements DownloadProgressListener {
                 if(fileType == FileType.VIDEO)
                 {
                     //Ignore this file in the future, don't download it again
-                    database.downloadedFileDao().insert(
-                            new DownloadedFileEntity(remotePath, "", System.currentTimeMillis(), captureTime, fileType)
-                    );
+//                    database.downloadedFileDao().insert(
+//                            new DownloadedFileEntity(remotePath, "", System.currentTimeMillis(), captureTime, fileType)
+//                    );
                 }
                 continue;
             }

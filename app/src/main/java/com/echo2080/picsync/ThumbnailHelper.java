@@ -1,17 +1,14 @@
 package com.echo2080.picsync;
 
-import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.drawable.Drawable;
-import android.media.ThumbnailUtils;
-
 import android.graphics.BitmapFactory;
+import android.media.ExifInterface;
+import android.media.MediaMetadataRetriever;
 import android.util.Log;
 
-
-import com.bumptech.glide.Glide;
-import com.bumptech.glide.request.target.CustomTarget;
-import com.bumptech.glide.request.transition.Transition;
+import com.arthenica.ffmpegkit.FFmpegKit;
+import com.arthenica.ffmpegkit.FFmpegSession;
+import com.arthenica.ffmpegkit.ReturnCode;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -20,18 +17,6 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import android.media.ExifInterface;
-import java.text.ParseException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import android.media.MediaMetadataRetriever;
-
 
 
 public class ThumbnailHelper {
@@ -139,70 +124,90 @@ public class ThumbnailHelper {
         }
     }
 
+
     public static String createAndSaveThumbnailForVideo(File originalFile, File targetFile, LogHelper logHelper) {
-        // 🎬 视频流处理分支
+        // 🎬 视频流基础校验
         if (!originalFile.exists() || originalFile.length() == 0 || !originalFile.canRead()) {
             logHelper.logToFile("Video file not accessible for thumbnail: " + originalFile.getAbsolutePath());
             return null;
         }
+
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         boolean retrieverReady = false;
+
         try {
+            // 1. 尝试加载原生 MediaMetadataRetriever
             try {
-                // First try path-based
                 retriever.setDataSource(originalFile.getAbsolutePath());
                 retrieverReady = true;
             } catch (RuntimeException e) {
-                logHelper.logToFile("setDataSource(path) failed for " + originalFile.getAbsolutePath() + ": " + e.getClass().getName() + ": " + e.getMessage());
-                // Try fallback with FileDescriptor
+                logHelper.logToFile("Native retriever setDataSource(path) failed: " + e.getMessage());
                 try (FileInputStream fis = new FileInputStream(originalFile)) {
                     retriever.setDataSource(fis.getFD());
                     retrieverReady = true;
                 } catch (Exception ex2) {
-                    logHelper.logToFile("setDataSource(FileDescriptor) ALSO failed for " + originalFile.getAbsolutePath() + ": " + ex2.getClass().getName() + ": " + ex2.getMessage());
+                    logHelper.logToFile("Native retriever setDataSource(fd) ALSO failed: " + ex2.getMessage());
                 }
             }
 
+            // 2. 原生提取逻辑
             if (retrieverReady) {
                 String width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
                 String height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
 
                 if (width != null && height != null && Integer.parseInt(width) > 0 && Integer.parseInt(height) > 0) {
-                    // 更健壮的视频帧提取尝试：用多个时间点，直到成功为止
                     Bitmap videoFrame = null;
-                    long[] candidateTimestamps = {0, 500_000, 1_000_000, 2_000_000, 5_000_000}; // 单位: 微秒
+                    // 微信视频开头容易黑屏，建议把 1000000 (1秒) 放在前面优先尝试
+                    long[] candidateTimestamps = {1000000, 0, 2000000, 5000000};
                     for (long t : candidateTimestamps) {
                         videoFrame = retriever.getFrameAtTime(t, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
-                        if (videoFrame != null) {
-                            break;
-                        }
+                        if (videoFrame != null) break;
                     }
+
                     if (videoFrame != null) {
                         try (FileOutputStream fos = new FileOutputStream(targetFile)) {
                             videoFrame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                            logHelper.logToFile("Thumbnail generated successfully via Native MediaMetadataRetriever.");
                             return targetFile.getAbsolutePath();
                         } catch (Exception ex) {
-                            logHelper.logToFile("Failed to generate thumbnail, videoFrame.compress failed:" + originalFile.getAbsolutePath());
-                            logHelper.logToFile(android.util.Log.getStackTraceString(ex));
+                            logHelper.logToFile("Failed to compress/save native thumbnail: " + ex.getMessage());
+                        } finally {
+                            videoFrame.recycle();
                         }
-                        videoFrame.recycle();
                     } else {
-                        logHelper.logToFile("Failed to generate thumbnail, all candidate videoFrame extractions returned null: " + originalFile.getAbsolutePath());
+                        logHelper.logToFile("Native retriever returned null frame, falling back to FFmpeg...");
                     }
                 } else {
-                    logHelper.logToFile("Failed to generate thumbnail or capture time, width or height is not right:" + originalFile.getAbsolutePath());
+                    logHelper.logToFile("Native retriever failed to get valid width/height, falling back to FFmpeg...");
                 }
+            }
+
+            // 3. 【兜底方案】如果原生方法失败，使用 FFmpeg 提取
+            // 命令解释：-y(覆盖输出) -i(输入) -ss(跳转到1秒处，避开黑屏) -vframes 1(只取1帧) -q:v 2(高质量JPEG)
+            String ffmpegCommand = String.format("-y -i \"%s\" -ss 00:00:01 -vframes 1 -q:v 2 \"%s\"",
+                    originalFile.getAbsolutePath(),
+                    targetFile.getAbsolutePath());
+
+            logHelper.logToFile("Executing FFmpeg command: " + ffmpegCommand);
+
+            // 同步执行 FFmpeg 命令
+            FFmpegSession session = FFmpegKit.execute(ffmpegCommand);
+
+            if (ReturnCode.isSuccess(session.getReturnCode())) {
+                logHelper.logToFile("Thumbnail generated successfully via FFmpeg fallback.");
+                return targetFile.getAbsolutePath();
             } else {
-                logHelper.logToFile("Failed to set data source for MediaMetadataRetriever: " + originalFile.getAbsolutePath());
+                logHelper.logToFile("FFmpeg fallback also failed. Log: " + session.getFailStackTrace());
             }
+
         } catch (Exception e) {
-            logHelper.logToFile("Failed to generate thumbnail or capture time:" + originalFile.getAbsolutePath());
-            logHelper.logToFile(android.util.Log.getStackTraceString(e));
+            logHelper.logToFile("Unexpected error during thumbnail generation: " + android.util.Log.getStackTraceString(e));
         } finally {
-            try { retriever.release(); } catch (IOException ignored) {
-                logHelper.logToFile("Failed to release retriever:" + originalFile.getAbsolutePath());
-            }
+            try {
+                retriever.release();
+            } catch (Exception ignored) {}
         }
+
         return null;
     }
 
