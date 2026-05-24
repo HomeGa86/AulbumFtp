@@ -1,10 +1,13 @@
 package com.echo2080.picsync;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.ExifInterface;
 import android.media.MediaMetadataRetriever;
+import android.net.Uri;
 import android.util.Log;
+
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -13,8 +16,34 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import wseemann.media.FFmpegMediaMetadataRetriever;
+import android.media.MediaPlayer;
+import android.graphics.SurfaceTexture;
+import android.view.Surface;
+
+import android.graphics.Bitmap;
+import android.graphics.SurfaceTexture;
+import android.media.MediaPlayer;
+import android.opengl.EGL14;
+import android.opengl.EGLConfig;
+import android.opengl.EGLContext;
+import android.opengl.EGLDisplay;
+import android.opengl.EGLSurface;
+import android.opengl.GLES11Ext;
+import android.opengl.GLES20;
+import android.os.SystemClock;
+import android.view.Surface;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 
 
 public class ThumbnailHelper {
@@ -125,7 +154,7 @@ public class ThumbnailHelper {
 
 
 
-    public static String createAndSaveThumbnailForVideo(File originalFile, File targetFile, LogHelper logHelper) {
+    public static String createAndSaveThumbnailForVideo(File originalFile, File targetFile, LogHelper logHelper, Context context) {
         // 🎬 视频流基础校验
         if (!originalFile.exists() || originalFile.length() == 0 || !originalFile.canRead()) {
             logHelper.logToFile("Video file not accessible for thumbnail: " + originalFile.getAbsolutePath());
@@ -234,11 +263,162 @@ public class ThumbnailHelper {
             } catch (Exception ignored) {}
         }
 
-        return null;
+        return extractFrameViaMediaPlayer(originalFile, targetFile, logHelper);
     }
 
 
-        /**
+
+
+    /**
+     * 【终极兜底】在后台线程使用 MediaPlayer + EGL 离屏渲染提取视频帧
+     * ⚠️ 此方法必须在非UI的后台线程中调用（如 ExecutorService / HandlerThread）
+     */
+    private static String extractFrameViaMediaPlayer(File originalFile, File targetFile, LogHelper logHelper) {
+        // EGL 资源
+        EGLDisplay eglDisplay = EGL14.EGL_NO_DISPLAY;
+        EGLContext eglContext = EGL14.EGL_NO_CONTEXT;
+        EGLSurface eglSurface = EGL14.EGL_NO_SURFACE;
+
+        // Media 资源
+        MediaPlayer player = null;
+        SurfaceTexture surfaceTexture = null;
+        Surface surface = null;
+        int[] textures = new int[1];
+
+        try {
+            logHelper.logToFile("[L4-Fallback] Starting MediaPlayer + EGL offscreen render...");
+
+            // ==================== 1. 初始化 EGL 离屏渲染环境 ====================
+            eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
+            if (eglDisplay == EGL14.EGL_NO_DISPLAY) throw new RuntimeException("Unable to get EGL display");
+
+            int[] version = new int[2];
+            if (!EGL14.eglInitialize(eglDisplay, version, 0, version, 1)) throw new RuntimeException("Unable to initialize EGL");
+
+            int[] configAttribs = {
+                    EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8,
+                    EGL14.EGL_BLUE_SIZE, 8, EGL14.EGL_ALPHA_SIZE, 8,
+                    EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                    EGL14.EGL_NONE
+            };
+            EGLConfig[] configs = new EGLConfig[1];
+            int[] numConfigs = new int[1];
+            EGL14.eglChooseConfig(eglDisplay, configAttribs, 0, configs, 0, 1, numConfigs, 0);
+
+            int[] contextAttribs = {EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE};
+            eglContext = EGL14.eglCreateContext(eglDisplay, configs[0], EGL14.EGL_NO_CONTEXT, contextAttribs, 0);
+            if (eglContext == EGL14.EGL_NO_CONTEXT) throw new RuntimeException("Failed to create EGL context");
+
+            // 创建 1x1 的 Pbuffer 作为占位 Surface（仅用于绑定上下文）
+            int[] pbufferAttribs = {EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE};
+            eglSurface = EGL14.eglCreatePbufferSurface(eglDisplay, configs[0], pbufferAttribs, 0);
+            if (!EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
+                throw new RuntimeException("Failed to make EGL context current");
+            }
+
+            // ==================== 2. 创建 GL 外部纹理 & SurfaceTexture ====================
+            GLES20.glGenTextures(1, textures, 0);
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textures[0]);
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+
+            surfaceTexture = new SurfaceTexture(textures[0]);
+            surface = new Surface(surfaceTexture);
+
+            // ==================== 3. MediaPlayer 同步解码 ====================
+            player = new MediaPlayer();
+            player.setDataSource(originalFile.getAbsolutePath());
+            player.setSurface(surface);
+
+            // 同步 prepare（后台线程安全）
+            player.prepare();
+
+            int videoWidth = player.getVideoWidth();
+            int videoHeight = player.getVideoHeight();
+            if (videoWidth <= 0 || videoHeight <= 0) {
+                logHelper.logToFile("[L4-Fallback] Invalid video dimensions: " + videoWidth + "x" + videoHeight);
+                return null;
+            }
+
+            // 更新 SurfaceTexture 缓冲区尺寸
+            surfaceTexture.setDefaultBufferSize(videoWidth, videoHeight);
+
+            // Seek 到 2秒处避开微信黑屏
+            final CountDownLatch seekLatch = new CountDownLatch(1);
+            player.setOnSeekCompleteListener(mp -> seekLatch.countDown());
+            player.seekTo(2000, MediaPlayer.SEEK_CLOSEST_SYNC);
+
+            if (!seekLatch.await(10, TimeUnit.SECONDS)) {
+                logHelper.logToFile("[L4-Fallback] MediaPlayer seek timeout after 10s");
+                return null;
+            }
+
+            // ⚠️ 关键：seek 完成后等待一小段时间让解码器输出新帧
+            SystemClock.sleep(100);
+
+            // 更新纹理（必须在 EGL 上下文绑定的当前线程调用）
+            surfaceTexture.updateTexImage();
+
+            // ==================== 4. glReadPixels 读取像素生成 Bitmap ====================
+            ByteBuffer pixelBuffer = ByteBuffer.allocateDirect(videoWidth * videoHeight * 4);
+            pixelBuffer.order(ByteOrder.nativeOrder());
+
+            GLES20.glViewport(0, 0, videoWidth, videoHeight);
+            GLES20.glReadPixels(0, 0, videoWidth, videoHeight, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, pixelBuffer);
+
+            int glError = GLES20.glGetError();
+            if (glError != GLES20.GL_NO_ERROR) {
+                logHelper.logToFile("[L4-Fallback] glReadPixels failed with GL error: " + glError);
+                return null;
+            }
+
+            // OpenGL 读取的像素是 Y轴翻转的，需要手动翻转
+            Bitmap rawBitmap = Bitmap.createBitmap(videoWidth, videoHeight, Bitmap.Config.ARGB_8888);
+            rawBitmap.copyPixelsFromBuffer(pixelBuffer);
+
+            // 垂直翻转 Bitmap
+            android.graphics.Matrix matrix = new android.graphics.Matrix();
+            matrix.preScale(1f, -1f);
+            Bitmap correctedBitmap = Bitmap.createBitmap(rawBitmap, 0, 0, videoWidth, videoHeight, matrix, false);
+            rawBitmap.recycle();
+
+            // ==================== 5. 保存文件 ====================
+            if (correctedBitmap != null) {
+                try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+                    correctedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                    logHelper.logToFile("[L4-Fallback] Thumbnail generated successfully via MediaPlayer+EGL!");
+                    return targetFile.getAbsolutePath();
+                } finally {
+                    correctedBitmap.recycle();
+                }
+            }
+
+        } catch (Exception e) {
+            logHelper.logToFile("[L4-Fallback] MediaPlayer+EGL fallback failed: " + android.util.Log.getStackTraceString(e));
+        } finally {
+            // ==================== 6. 严格按逆序释放所有资源 ====================
+            try { if (player != null) { player.stop(); player.release(); } } catch (Exception ignored) {}
+            try { if (surface != null) surface.release(); } catch (Exception ignored) {}
+            try { if (surfaceTexture != null) surfaceTexture.release(); } catch (Exception ignored) {}
+            try {
+                if (textures[0] != 0) GLES20.glDeleteTextures(1, textures, 0);
+            } catch (Exception ignored) {}
+            try {
+                if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
+                    EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+                    if (eglSurface != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(eglDisplay, eglSurface);
+                    if (eglContext != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(eglDisplay, eglContext);
+                    EGL14.eglTerminate(eglDisplay);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        return null;
+    }
+
+    /**
          * 将原图的 EXIF 信息（拍摄日期、地点、相机参数等）复制到缩略图中
          */
     public static ExifInfo copyExifInfo(File sourceFile, File destFile) {

@@ -326,7 +326,7 @@ public class SyncService extends Service implements DownloadProgressListener {
             String thumbnailPath = null;
 
             if (fileType == FileType.VIDEO) {
-                thumbnailPath = ThumbnailHelper.createAndSaveThumbnailForVideo(tempFile, thumbnailFile, logHelper);
+                thumbnailPath = ThumbnailHelper.createAndSaveThumbnailForVideo(tempFile, thumbnailFile, logHelper,this);
                 if(thumbnailPath != null){
                     parseSuccess = true;
                     captureTime = ThumbnailHelper.getVideoCaptureTime(tempFile.getAbsolutePath(), fileName);
