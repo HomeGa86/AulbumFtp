@@ -6,10 +6,6 @@ import android.media.ExifInterface;
 import android.media.MediaMetadataRetriever;
 import android.util.Log;
 
-import com.arthenica.ffmpegkit.FFmpegKit;
-import com.arthenica.ffmpegkit.FFmpegSession;
-import com.arthenica.ffmpegkit.ReturnCode;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -17,6 +13,8 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+
+import wseemann.media.FFmpegMediaMetadataRetriever;
 
 
 public class ThumbnailHelper {
@@ -125,6 +123,8 @@ public class ThumbnailHelper {
     }
 
 
+
+
     public static String createAndSaveThumbnailForVideo(File originalFile, File targetFile, LogHelper logHelper) {
         // 🎬 视频流基础校验
         if (!originalFile.exists() || originalFile.length() == 0 || !originalFile.canRead()) {
@@ -132,35 +132,35 @@ public class ThumbnailHelper {
             return null;
         }
 
-        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        boolean retrieverReady = false;
+        // ==================== 阶段1: 原生 MediaMetadataRetriever ====================
+        MediaMetadataRetriever nativeRetriever = new MediaMetadataRetriever();
+        boolean nativeReady = false;
 
         try {
             // 1. 尝试加载原生 MediaMetadataRetriever
             try {
-                retriever.setDataSource(originalFile.getAbsolutePath());
-                retrieverReady = true;
+                nativeRetriever.setDataSource(originalFile.getAbsolutePath());
+                nativeReady = true;
             } catch (RuntimeException e) {
                 logHelper.logToFile("Native retriever setDataSource(path) failed: " + e.getMessage());
                 try (FileInputStream fis = new FileInputStream(originalFile)) {
-                    retriever.setDataSource(fis.getFD());
-                    retrieverReady = true;
+                    nativeRetriever.setDataSource(fis.getFD());
+                    nativeReady = true;
                 } catch (Exception ex2) {
                     logHelper.logToFile("Native retriever setDataSource(fd) ALSO failed: " + ex2.getMessage());
                 }
             }
 
             // 2. 原生提取逻辑
-            if (retrieverReady) {
-                String width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
-                String height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+            if (nativeReady) {
+                String width = nativeRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+                String height = nativeRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
 
                 if (width != null && height != null && Integer.parseInt(width) > 0 && Integer.parseInt(height) > 0) {
                     Bitmap videoFrame = null;
-                    // 微信视频开头容易黑屏，建议把 1000000 (1秒) 放在前面优先尝试
                     long[] candidateTimestamps = {1000000, 0, 2000000, 5000000};
                     for (long t : candidateTimestamps) {
-                        videoFrame = retriever.getFrameAtTime(t, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                        videoFrame = nativeRetriever.getFrameAtTime(t, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
                         if (videoFrame != null) break;
                     }
 
@@ -175,41 +175,68 @@ public class ThumbnailHelper {
                             videoFrame.recycle();
                         }
                     } else {
-                        logHelper.logToFile("Native retriever returned null frame, falling back to FFmpeg...");
+                        logHelper.logToFile("Native retriever returned null frame, falling back to FFmpegMediaMetadataRetriever...");
                     }
                 } else {
-                    logHelper.logToFile("Native retriever failed to get valid width/height, falling back to FFmpeg...");
+                    logHelper.logToFile("Native retriever failed to get valid width/height, falling back to FFmpegMediaMetadataRetriever...");
                 }
             }
-
-            // 3. 【兜底方案】如果原生方法失败，使用 FFmpeg 提取
-            // 命令解释：-y(覆盖输出) -i(输入) -ss(跳转到1秒处，避开黑屏) -vframes 1(只取1帧) -q:v 2(高质量JPEG)
-            String ffmpegCommand = String.format("-y -i \"%s\" -ss 00:00:01 -vframes 1 -q:v 2 \"%s\"",
-                    originalFile.getAbsolutePath(),
-                    targetFile.getAbsolutePath());
-
-            logHelper.logToFile("Executing FFmpeg command: " + ffmpegCommand);
-
-            // 同步执行 FFmpeg 命令
-            FFmpegSession session = FFmpegKit.execute(ffmpegCommand);
-
-            if (ReturnCode.isSuccess(session.getReturnCode())) {
-                logHelper.logToFile("Thumbnail generated successfully via FFmpeg fallback.");
-                return targetFile.getAbsolutePath();
-            } else {
-                logHelper.logToFile("FFmpeg fallback also failed. Log: " + session.getFailStackTrace());
-            }
-
         } catch (Exception e) {
-            logHelper.logToFile("Unexpected error during thumbnail generation: " + android.util.Log.getStackTraceString(e));
+            logHelper.logToFile("Unexpected error in native retriever: " + android.util.Log.getStackTraceString(e));
         } finally {
             try {
-                retriever.release();
+                nativeRetriever.release();
+            } catch (Exception ignored) {}
+        }
+
+        // ==================== 阶段2: FFmpegMediaMetadataRetriever 兜底 ====================
+        FFmpegMediaMetadataRetriever ffmpegRetriever = new FFmpegMediaMetadataRetriever();
+        try {
+            logHelper.logToFile("Attempting fallback with FFmpegMediaMetadataRetriever...");
+            ffmpegRetriever.setDataSource(originalFile.getAbsolutePath());
+
+            String width = ffmpegRetriever.extractMetadata(FFmpegMediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+            String height = ffmpegRetriever.extractMetadata(FFmpegMediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+
+            if (width != null && height != null && Integer.parseInt(width) > 0 && Integer.parseInt(height) > 0) {
+                Bitmap videoFrame = null;
+                // 兜底方案使用更激进的时间戳策略，避开微信视频常见的开头黑屏/无效帧区间
+                long[] fallbackTimestamps = {2000000, 3000000, 5000000, 10000000, 1000000, 0};
+                for (long t : fallbackTimestamps) {
+                    videoFrame = ffmpegRetriever.getFrameAtTime(t, FFmpegMediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                    if (videoFrame != null) {
+                        logHelper.logToFile("FFmpeg fallback extracted frame at timestamp: " + t + "us");
+                        break;
+                    }
+                }
+
+                if (videoFrame != null) {
+                    try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+                        videoFrame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                        logHelper.logToFile("Thumbnail generated successfully via FFmpegMediaMetadataRetriever fallback.");
+                        return targetFile.getAbsolutePath();
+                    } catch (Exception ex) {
+                        logHelper.logToFile("Failed to compress/save FFmpeg fallback thumbnail: " + ex.getMessage());
+                    } finally {
+                        videoFrame.recycle();
+                    }
+                } else {
+                    logHelper.logToFile("FFmpegMediaMetadataRetriever also returned null frame.");
+                }
+            } else {
+                logHelper.logToFile("FFmpegMediaMetadataRetriever failed to get valid width/height.");
+            }
+        } catch (Exception e) {
+            logHelper.logToFile("FFmpegMediaMetadataRetriever fallback failed: " + android.util.Log.getStackTraceString(e));
+        } finally {
+            try {
+                ffmpegRetriever.release();
             } catch (Exception ignored) {}
         }
 
         return null;
     }
+
 
         /**
          * 将原图的 EXIF 信息（拍摄日期、地点、相机参数等）复制到缩略图中

@@ -21,8 +21,7 @@ allprojects {
         google()
         mavenCentral()
         jcenter() // Warning: this repository is going to shut down soon
-        maven { url 'https://raw.githubusercontent.com/arthenica/ffmpeg-kit/master/maven-repo' }
-    }
+        maven { url 'https://raw.githubusercontent.com/arthenica/ffmpeg-kit/master/maven-repo' }    }
 }
 
 task clean(type: Delete) {
