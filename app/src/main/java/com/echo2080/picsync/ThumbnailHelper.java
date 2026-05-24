@@ -560,96 +560,107 @@ public class ThumbnailHelper {
 // 辅助方法：从文件名字符串中提取时间戳 (支持时间戳、日期格式)
 // ==================================================================================
     private static long extractTimestampFromFilename(String fileName) {
-        // 1. 移除常见的前缀干扰，如 "mmexport", "IMG_", "VID_" 等
-        String cleaned = fileName
-                .replace("mmexport", "")
-                .replace("IMG_", "")
-                .replace("img_", "") // 兼容小写 img_
-                .replace("VID_", "")
-                .replace("WhatsApp_Image", "")
-                .replace("WhatsApp_Video", "");
-
-        // ---------------------------------------------------------
-        // 方案 A: 尝试匹配纯数字时间戳 (10位秒 或 13位毫秒)
-        // 正则：匹配 10位 到 13位 的连续数字
-        // ---------------------------------------------------------
-        java.util.regex.Pattern timestampPattern = java.util.regex.Pattern.compile("\\b(\\d{10,13})\\b");
-        java.util.regex.Matcher timestampMatcher = timestampPattern.matcher(cleaned);
-
-        if (timestampMatcher.find()) {
-            String numberStr = timestampMatcher.group(1);
-            try {
-                long timestamp;
-                if (numberStr.length() == 10) {
-                    // 如果是10位，视为 Unix 时间戳（秒）
-                    timestamp = Long.parseLong(numberStr) * 1000L;
-                } else {
-                    // 如果是13位，直接解析
-                    timestamp = Long.parseLong(numberStr);
-                }
-
-                // 安全验证：检查时间戳是否在合理范围内 (2000年 - 2030年)
-                long year2000 = 946684800000L;
-                long year2030 = 1893456000000L;
-
-                if (timestamp >= year2000 && timestamp <= year2030) {
-                    return timestamp;
-                }
-            } catch (NumberFormatException e) {
-                e.printStackTrace();
-            }
-        }
-
-        // ---------------------------------------------------------
-        // 方案 B: 尝试匹配日期格式 (例如: 20260517_123456 或 2026-05-17_123456)
-        // 正则解释：
-        // (\\d{4})   -> 年份 (4位)
-        // [-_]??     -> 可选的分隔符 (- 或 _)
-        // (\\d{2})   -> 月份 (2位)
-        // [-_]??     -> 可选的分隔符
-        // (\\d{2})   -> 日期 (2位)
-        // [_T ]??    -> 可选的时间分隔符 (_ 或 T 或 空格)
-        // (\\d{2})   -> 小时 (2位)
-        // :??        -> 可选的分隔符 (:)
-        // (\\d{2})   -> 分钟 (2位)
-        // :??        -> 可选的分隔符 (:)
-        // (\\d{2})   -> 秒数 (2位)
-        // ---------------------------------------------------------
-        String dateRegex = "(\\d{4})[-_]? ?(\\d{2})[-_]? ?(\\d{2})[_T ]?(\\d{2}):?(\\d{2}):?(\\d{2})";
-        java.util.regex.Pattern datePattern = java.util.regex.Pattern.compile(dateRegex);
-        java.util.regex.Matcher dateMatcher = datePattern.matcher(cleaned);
-
-        if (dateMatcher.find()) {
-            try {
-                int year = Integer.parseInt(dateMatcher.group(1));
-                int month = Integer.parseInt(dateMatcher.group(2));
-                int day = Integer.parseInt(dateMatcher.group(3));
-                int hour = Integer.parseInt(dateMatcher.group(4));
-                int minute = Integer.parseInt(dateMatcher.group(5));
-                int second = Integer.parseInt(dateMatcher.group(6));
-
-                // 使用 Calendar 将提取出的年月日时分秒组装成毫秒时间戳
-                java.util.Calendar calendar = java.util.Calendar.getInstance();
-                calendar.set(year, month - 1, day, hour, minute, second); // 注意：Calendar的月份是从 0 开始的
-                calendar.set(java.util.Calendar.MILLISECOND, 0);
-
-                long parsedTime = calendar.getTimeInMillis();
-
-                // 同样进行安全范围校验 (2000年 - 2030年)
-                long year2000 = 946684800000L;
-                long year2030 = 1893456000000L;
-
-                if (parsedTime >= year2000 && parsedTime <= year2030) {
-                    return parsedTime;
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        // 两种方案均未找到有效时间戳
+    if (fileName == null || fileName.isEmpty()) {
         return 0;
     }
+
+    // 0. 先移除文件扩展名，避免干扰
+    String nameWithoutExt = fileName.replaceAll("\\.[^.]+$", "");
+
+    // ---------------------------------------------------------
+    // 优先方案: 针对 mmexport 格式特殊处理
+    // 格式: mmexport<32位hex>_<13位时间戳>
+    // ---------------------------------------------------------
+    if (nameWithoutExt.startsWith("mmexport")) {
+        int lastUnderscore = nameWithoutExt.lastIndexOf('_');
+        if (lastUnderscore > 0 && lastUnderscore < nameWithoutExt.length() - 1) {
+            String tsStr = nameWithoutExt.substring(lastUnderscore + 1);
+            Long ts = parseAndValidateTimestamp(tsStr);
+            if (ts != 0) return ts;
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 通用方案 A: 按下划线分割，逐段查找有效时间戳
+    // 解决 \b 在 hex+数字 交界处失效的问题
+    // ---------------------------------------------------------
+    String[] parts = nameWithoutExt.split("_");
+    for (String part : parts) {
+        // 去除可能残留的前缀
+        String cleaned = part
+                .replace("mmexport", "")
+                .replace("IMG", "")
+                .replace("img", "")
+                .replace("VID", "")
+                .replace("WhatsAppImage", "")
+                .replace("WhatsAppVideo", "");
+
+        // 从清理后的片段中提取连续数字
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{10,13})").matcher(cleaned);
+        while (m.find()) {
+            Long ts = parseAndValidateTimestamp(m.group(1));
+            if (ts != 0) return ts;
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 兜底方案 B: 匹配日期格式 (20260517_123456 等)
+    // ---------------------------------------------------------
+    String dateRegex = "(\\d{4})[-_]?(\\d{2})[-_]?(\\d{2})[_T ]?(\\d{2}):?(\\d{2}):?(\\d{2})";
+    java.util.regex.Matcher dateMatcher = java.util.regex.Pattern.compile(dateRegex).matcher(nameWithoutExt);
+
+    if (dateMatcher.find()) {
+        try {
+            int year = Integer.parseInt(dateMatcher.group(1));
+            int month = Integer.parseInt(dateMatcher.group(2));
+            int day = Integer.parseInt(dateMatcher.group(3));
+            int hour = Integer.parseInt(dateMatcher.group(4));
+            int minute = Integer.parseInt(dateMatcher.group(5));
+            int second = Integer.parseInt(dateMatcher.group(6));
+
+            java.util.Calendar calendar = java.util.Calendar.getInstance();
+            calendar.set(year, month - 1, day, hour, minute, second);
+            calendar.set(java.util.Calendar.MILLISECOND, 0);
+
+            long parsedTime = calendar.getTimeInMillis();
+            if (isValidTimestamp(parsedTime)) {
+                return parsedTime;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * 解析并验证时间戳字符串，返回毫秒时间戳；无效则返回 0
+ */
+private static Long parseAndValidateTimestamp(String numberStr) {
+    try {
+        long timestamp;
+        if (numberStr.length() == 10) {
+            timestamp = Long.parseLong(numberStr) * 1000L;
+        } else if (numberStr.length() >= 11 && numberStr.length() <= 13) {
+            timestamp = Long.parseLong(numberStr);
+        } else {
+            return 0L;
+        }
+        return isValidTimestamp(timestamp) ? timestamp : 0L;
+    } catch (NumberFormatException e) {
+        return 0L;
+    }
+}
+
+/**
+ * 校验时间戳是否在合理范围内 (2000-01-01 ~ 2030-01-01)
+ */
+private static boolean isValidTimestamp(long timestamp) {
+    final long YEAR_2000 = 946684800000L;
+    final long YEAR_2030 = 1893456000000L;
+    return timestamp >= YEAR_2000 && timestamp <= YEAR_2030;
+}
 
     /**
      * 尝试从视频元数据或文件名中提取拍摄/录制时间戳
