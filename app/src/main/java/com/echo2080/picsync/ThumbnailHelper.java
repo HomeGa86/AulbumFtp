@@ -195,7 +195,10 @@ public class ThumbnailHelper {
 
                     if (videoFrame != null) {
                         try (FileOutputStream fos = new FileOutputStream(targetFile)) {
-                            videoFrame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                            Bitmap thumbnail = scaleAndCropToSquare(videoFrame, 300);
+                            thumbnail.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                            // 如果缩放产生了新对象，回收缩略图（videoFrame 在 finally 中回收）
+                            if (thumbnail != videoFrame) thumbnail.recycle();
                             logHelper.logToFile("Thumbnail generated successfully via Native MediaMetadataRetriever.");
                             return targetFile.getAbsolutePath();
                         } catch (Exception ex) {
@@ -241,7 +244,9 @@ public class ThumbnailHelper {
 
                 if (videoFrame != null) {
                     try (FileOutputStream fos = new FileOutputStream(targetFile)) {
-                        videoFrame.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                        Bitmap thumbnail = scaleAndCropToSquare(videoFrame, 300);
+                        thumbnail.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                        if (thumbnail != videoFrame) thumbnail.recycle();
                         logHelper.logToFile("Thumbnail generated successfully via FFmpegMediaMetadataRetriever fallback.");
                         return targetFile.getAbsolutePath();
                     } catch (Exception ex) {
@@ -387,7 +392,9 @@ public class ThumbnailHelper {
             // ==================== 5. 保存文件 ====================
             if (correctedBitmap != null) {
                 try (FileOutputStream fos = new FileOutputStream(targetFile)) {
-                    correctedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                    Bitmap thumbnail = scaleAndCropToSquare(correctedBitmap, 300);
+                    thumbnail.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                    if (thumbnail != correctedBitmap) thumbnail.recycle();
                     logHelper.logToFile("[L4-Fallback] Thumbnail generated successfully via MediaPlayer+EGL!");
                     return targetFile.getAbsolutePath();
                 } finally {
@@ -417,6 +424,45 @@ public class ThumbnailHelper {
 
         return null;
     }
+
+    private static Bitmap scaleAndCropToSquare(Bitmap source, int targetSize) {
+        if (source == null) return null;
+
+        int srcWidth = source.getWidth();
+        int srcHeight = source.getHeight();
+
+        // 如果已经小于等于目标尺寸，无需放大（避免模糊），直接返回原图或按需处理
+        // 这里选择：如果原图更小则不放大，保持原样；如需强制300x300可去掉此判断
+        if (srcWidth <= targetSize && srcHeight <= targetSize) {
+            return source;
+        }
+
+        float scale = Math.max(
+                (float) targetSize / srcWidth,
+                (float) targetSize / srcHeight
+        );
+
+        android.graphics.Matrix matrix = new android.graphics.Matrix();
+        matrix.postScale(scale, scale);
+
+        // 计算居中裁剪的起始坐标
+        int scaledWidth = Math.round(srcWidth * scale);
+        int scaledHeight = Math.round(srcHeight * scale);
+        int startX = (scaledWidth - targetSize) / 2;
+        int startY = (scaledHeight - targetSize) / 2;
+
+        Bitmap scaled = Bitmap.createBitmap(source, 0, 0, srcWidth, srcHeight, matrix, true);
+        Bitmap cropped = Bitmap.createBitmap(scaled, startX, startY, targetSize, targetSize);
+
+        // 回收中间产物（注意：如果 createBitmap 返回的是同一对象则不能 recycle）
+        if (scaled != cropped && !scaled.isRecycled()) {
+            scaled.recycle();
+        }
+        // 注意：不要在这里 recycle source，由调用方负责
+
+        return cropped;
+    }
+
 
     /**
          * 将原图的 EXIF 信息（拍摄日期、地点、相机参数等）复制到缩略图中
