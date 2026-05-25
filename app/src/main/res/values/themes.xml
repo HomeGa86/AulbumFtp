@@ -12,5 +12,16 @@
         <!-- Status bar color. -->
         <item name="android:statusBarColor" tools:targetApi="l">?attr/colorPrimaryVariant</item>
         <!-- Customize your theme here. -->
+        <item name="actionBarStyle">@style/MyActionBarStyle</item>
     </style>
+
+    <style name="MyActionBarStyle" parent="Widget.MaterialComponents.ActionBar.Solid">
+        <!-- 指向具体的标题文字样式 -->
+        <item name="titleTextStyle">@style/MyTitleTextStyle</item>
+    </style>
+    <style name="MyTitleTextStyle" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="android:minHeight">30dp</item>
+        <item name="android:textSize">10sp</item>
+    </style>
+
 </resources>

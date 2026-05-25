@@ -4,9 +4,11 @@ import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
@@ -14,6 +16,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Menu;
@@ -57,6 +60,10 @@ public class MainActivity extends AppCompatActivity {
     private List<ImageItem> imagePathList = new ArrayList<>();
     private File thumbnailDir;
 
+    private SyncService syncService;
+    private boolean isBound = false;
+
+
     private BroadcastReceiver syncCompleteReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -65,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(MainActivity.this, R.string.sync_complete, Toast.LENGTH_SHORT).show();
         }
     };
+
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -102,15 +110,14 @@ public class MainActivity extends AppCompatActivity {
 
     private void showFtpConfigDialog(final SharedPreferences prefs) {
         String oldHost = prefs.getString("ftp_host", "");
-        Integer oldPort = Integer.parseInt(prefs.getString("ftp_port", "21"));
+        Integer oldPort = Integer.parseInt(prefs.getString("ftp_port", "21").isEmpty() ? "21" : prefs.getString("ftp_port", "21"));
         String oldUser = prefs.getString("ftp_user", "anonymous");
         String oldPass = prefs.getString("ftp_pass", "");
         String oldBasePath = prefs.getString("ftp_base_path", "/");
         Boolean isSftp = prefs.getBoolean("is_sftp", false);
 
         String oldBackupHost = prefs.getString("backup_ftp_host", "");
-        Integer oldBackupPort = Integer.parseInt(prefs.getString("backup_ftp_port", "21"));
-
+        Integer oldBackupPort = Integer.parseInt(prefs.getString("backup_ftp_port", "21").isEmpty() ? "21" : prefs.getString("backup_ftp_port", "21"));
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_ftp_config, null);
         final EditText etHost = dialogView.findViewById(R.id.et_ftp_host);
         final EditText etPort = dialogView.findViewById(R.id.et_ftp_port);
@@ -424,4 +431,49 @@ public class MainActivity extends AppCompatActivity {
             });
         }
     }
+
+
+    private final SyncService.OnDataUpdateListener dataListener = dataFromSyncService -> {
+        runOnUiThread(() -> {
+            setTitle(dataFromSyncService);
+        });
+    };
+
+    private final ServiceConnection connection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            SyncService.LocalBinder binder = (SyncService.LocalBinder) service;
+            syncService = binder.getService();
+            isBound = true;
+
+            // 注册监听
+            syncService.registerDataListener(dataListener);
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            isBound = false;
+            syncService = null;
+        }
+    };
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        Intent intent = new Intent(this, SyncService.class);
+        bindService(intent, connection, Context.BIND_AUTO_CREATE);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (isBound) {
+            // 即使 onStart/onStop 多次调用，unregister 也能准确移除当前的监听器
+            syncService.unregisterDataListener(dataListener);
+            unbindService(connection);
+            isBound = false;
+        }
+    }
+
+
 }

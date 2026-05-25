@@ -78,11 +78,11 @@ public class SftpHelper implements FtpInterface {
 
         // 读取主服务器配置
         String host = prefs.getString("ftp_host", "");
-        int port = Integer.parseInt(prefs.getString("ftp_port", "22"));
+        int port = Integer.parseInt(prefs.getString("ftp_port", "22").isEmpty() ? "22" : prefs.getString("ftp_port", "22"));
 
         // 读取备用服务器配置
         String backupHost = prefs.getString("backup_ftp_host", "");
-        int backupPort = Integer.parseInt(prefs.getString("backup_ftp_port", "22"));
+        int backupPort = Integer.parseInt(prefs.getString("backup_ftp_port", "22").isEmpty() ? "22" : prefs.getString("backup_ftp_port", "22"));
 
         String user = prefs.getString("ftp_user", "");
         String password = prefs.getString("ftp_pass", "");

@@ -27,4 +27,11 @@ public interface DownloadedFileDao {
 
     @Query("UPDATE downloaded_files SET isDeleted = 1 WHERE ftpPath = :ftpPath")
     void markAsDeleted(String ftpPath);
+
+    @Query("SELECT * FROM downloaded_files WHERE captureTime > :timestamp")
+    List<DownloadedFileEntity> getFilesAfterTimestamp(long timestamp);
+
+    @androidx.room.Update
+    void updateCaptureTime(DownloadedFileEntity entity);
+
 }

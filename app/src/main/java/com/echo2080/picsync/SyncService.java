@@ -12,6 +12,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
+import android.os.Binder;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
@@ -36,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -63,6 +65,11 @@ public class SyncService extends Service implements DownloadProgressListener {
     private int currentFileIndex;
     private String currentFileName;
     private int totalFiles;
+
+    private final IBinder binder = new LocalBinder();
+    // 使用 CopyOnWriteArrayList 保证多线程环境下的安全（适合读多写少的场景）
+    private final List<OnDataUpdateListener> dataListeners = new CopyOnWriteArrayList<>();
+
 
     public static void resetFullSyncTimestamp(Context context) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -119,34 +126,39 @@ public class SyncService extends Service implements DownloadProgressListener {
         return START_STICKY;
     }
 
-    @Nullable
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
 
     private void syncAllFiles() {
         isRunning.set(true);
 
+
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         long lastFullSyncTime = prefs.getLong(KEY_LAST_FULL_SYNC_TIME, 0L);
         long currentTime = System.currentTimeMillis();
+
+//        migrateCaptureTime();
+//        if(2==2) {
+//            return;
+//        }
 
         if (currentTime - lastFullSyncTime < FULL_SYNC_INTERVAL_MS) {
             long daysRemaining = (FULL_SYNC_INTERVAL_MS - (currentTime - lastFullSyncTime)) / (24 * 60 * 60 * 1000);
             String skipMsg = "上次完全同步成功在10天内，跳过本次FTP遍历。剩余免打扰天数: " + daysRemaining;
             Log.d(TAG, skipMsg);
             // 确保资源存在
+            String msg = MessageFormat.format(getString(R.string.no_need_sync), String.valueOf(daysRemaining));
             updateNotification(MessageFormat.format(getString(R.string.no_need_sync), String.valueOf(daysRemaining)));
+            notifyUI(msg);
             isRunning.set(false);
             return;
         }
 
         updateNotification(getString(R.string.connecting));
+        notifyUI(getString(R.string.connecting));
 
         if (!ftpHelper.connect(this)) {
             Log.e(TAG, "FTP 连接失败");
             updateNotification(getString(R.string.failed_to_connect));
+            notifyUI(getString(R.string.failed_to_connect));
             isRunning.set(false);
             return;
         }
@@ -163,6 +175,7 @@ public class SyncService extends Service implements DownloadProgressListener {
 
         List<String> allRemoteFiles = new ArrayList<>();
         updateNotification(getString(R.string.loading_file_list));
+        notifyUI(getString(R.string.loading_file_list));
         ServerFileDao serverFileDao = database.serverFileDao();
         List<String> cachedFilesList = serverFileDao.getAllFilePaths();
         if (cachedFilesList != null && !cachedFilesList.isEmpty()) {
@@ -181,6 +194,7 @@ public class SyncService extends Service implements DownloadProgressListener {
                 serverFileDao.insertAll(entities);
             } catch (Exception exception) {
                 updateNotification(getString(R.string.failed_to_load_list));
+                notifyUI(getString(R.string.failed_to_load_list));
                 isRunning.set(false);
                 return;
             }
@@ -199,6 +213,8 @@ public class SyncService extends Service implements DownloadProgressListener {
         }
         Log.d(TAG, "需要下载 " + newFiles.size() + " 个新文件");
         updateNotification(MessageFormat.format(getString(R.string.x_files_to_download), newFiles.size()));
+        notifyUI(MessageFormat.format(getString(R.string.x_files_to_download), newFiles.size()));
+
 
         int total = newFiles.size();
         int current = 0;
@@ -219,6 +235,8 @@ public class SyncService extends Service implements DownloadProgressListener {
             this.progressText = "";
 
             updateNotification(MessageFormat.format(getString(R.string.downloading), current, total, fileName));
+            notifyUI(MessageFormat.format(getString(R.string.downloading), current, total, fileName));
+
 
             File tempFile = new File(getCacheDir(), "temp_" + fileName);
             if (tempFile.exists()) tempFile.delete(); // Delete the file first
@@ -246,6 +264,11 @@ public class SyncService extends Service implements DownloadProgressListener {
                             getString(R.string.downloading),
                             current, total, fileName + " (" + this.progressText + ")"
                     ));
+                    notifyUI(MessageFormat.format(
+                            getString(R.string.downloading),
+                            current, total, fileName + " (" + this.progressText + ")"
+                    ));
+
 
                     boolean reconnectSuccess = ftpHelper.reconnect(this);
                     if(reconnectSuccess)
@@ -258,6 +281,8 @@ public class SyncService extends Service implements DownloadProgressListener {
                         retryCount=0;
                         logHelper.logToFile(getString(R.string.reconnected) + ":" + remotePath);
                         updateNotification(getString(R.string.reconnected));
+                        notifyUI(getString(R.string.reconnected));
+
                     }
                     else
                     {
@@ -383,10 +408,12 @@ public class SyncService extends Service implements DownloadProgressListener {
             editor.putLong(KEY_LAST_FULL_SYNC_TIME, System.currentTimeMillis());
             editor.apply();
             updateNotification(MessageFormat.format(getString(R.string.sync_done), successCount));
+            notifyUI(MessageFormat.format(getString(R.string.sync_done), successCount));
             Log.d(TAG, "本次同步完全成功，未来10天将跳过FTP遍历。");
         } else {
             Log.d(TAG, "本次同步存在失败文件，不记录完全成功时间戳。");
             updateNotification(MessageFormat.format(getString(R.string.part_done), failedToDownloadCount, failedToProcessCount));
+            notifyUI(MessageFormat.format(getString(R.string.part_done), failedToDownloadCount, failedToProcessCount));
         }
 
 
@@ -505,6 +532,83 @@ public class SyncService extends Service implements DownloadProgressListener {
             executor.shutdown();
         }
     }
+
+    public interface OnDataUpdateListener {
+        void onDataUpdated(String data);
+    }
+
+    public class LocalBinder extends Binder {
+        public SyncService getService() {
+            return SyncService.this;
+        }
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return binder;
+    }
+
+    // 注册监听：添加到列表中
+    public void registerDataListener(OnDataUpdateListener listener) {
+        if (listener != null && !dataListeners.contains(listener)) {
+            dataListeners.add(listener);
+        }
+    }
+
+    // 注销监听：从列表中移除
+    public void unregisterDataListener(OnDataUpdateListener listener) {
+        dataListeners.remove(listener);
+    }
+
+    public void notifyUI(String msg)
+    {
+        for (OnDataUpdateListener listener : dataListeners) {
+            if (listener != null) {
+                listener.onDataUpdated(msg);
+            }
+        }
+    }
+
+    public void migrateCaptureTime() {
+        // 1. 设定时间阈值：2026年4月30日 23:59:59 的时间戳
+        long thresholdTimestamp = 1777564799000L;
+
+        // 2. 从数据库取出所有 captureTime 在 2026年4月份之后的记录
+        List<DownloadedFileEntity> files = database.downloadedFileDao().getFilesAfterTimestamp(thresholdTimestamp);
+
+        if (files == null || files.isEmpty()) {
+            System.out.println("没有找到需要更新的记录。");
+            return;
+        }
+
+        int updateCount = 0;
+        // 3. 遍历每一条记录
+        for (DownloadedFileEntity file : files) {
+            // 获取 ftpPath（例如：/folder1/folder2/img_2016-05-12_abc.jpeg）
+            String ftpPath = file.getFtpPath();
+
+            // 从文件名中提取拍摄时间
+            long extractedTime = ThumbnailHelper.extractTimestampFromFilename(ftpPath);
+
+            logHelper.logToFile(ftpPath);
+
+
+            // 4. 如果成功提取到了有效的时间（不为0），则更新实体并保存回数据库
+            if (extractedTime > 0) {
+                file.setCaptureTime(extractedTime);
+                database.downloadedFileDao().updateCaptureTime(file);
+                updateCount++;
+                System.out.println("更新成功: " + ftpPath + " -> 新时间: " + extractedTime);
+            } else {
+                System.out.println("提取失败: " + ftpPath);
+            }
+        }
+
+        System.out.println("数据清洗完成，共更新了 " + updateCount + " 条记录。");
+        notifyUI("数据清洗完成，共更新了 " + updateCount + " 条记录。");
+    }
+
+
 }
 
 

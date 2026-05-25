@@ -559,7 +559,7 @@ public class ThumbnailHelper {
     // ==================================================================================
 // 辅助方法：从文件名字符串中提取时间戳 (支持时间戳、日期格式)
 // ==================================================================================
-    private static long extractTimestampFromFilename(String fileName) {
+    public static long extractTimestampFromFilename(String fileName) {
     if (fileName == null || fileName.isEmpty()) {
         return 0;
     }
@@ -631,7 +631,34 @@ public class ThumbnailHelper {
         }
     }
 
-    return 0;
+        // ---------------------------------------------------------
+        // 兜底方案 C: 仅匹配纯日期格式 (例如 img_2015-10-12_abc.jpg)
+        // ---------------------------------------------------------
+        String dateOnlyRegex = "(\\d{4})[-_](\\d{2})[-_](\\d{2})";
+        java.util.regex.Matcher dateOnlyMatcher = java.util.regex.Pattern.compile(dateOnlyRegex).matcher(nameWithoutExt);
+
+        if (dateOnlyMatcher.find()) {
+            try {
+                int year = Integer.parseInt(dateOnlyMatcher.group(1));
+                int month = Integer.parseInt(dateOnlyMatcher.group(2));
+                int day = Integer.parseInt(dateOnlyMatcher.group(3));
+
+                java.util.Calendar calendar = java.util.Calendar.getInstance();
+                // 时间默认为当天的 00:00:00
+                calendar.set(year, month - 1, day, 0, 0, 0);
+                calendar.set(java.util.Calendar.MILLISECOND, 0);
+
+                long parsedTime = calendar.getTimeInMillis();
+                if (isValidTimestamp(parsedTime)) {
+                    return parsedTime;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+
+        return 0;
 }
 
 /**
@@ -658,8 +685,8 @@ private static Long parseAndValidateTimestamp(String numberStr) {
  */
 private static boolean isValidTimestamp(long timestamp) {
     final long YEAR_2000 = 946684800000L;
-    final long YEAR_2030 = 1893456000000L;
-    return timestamp >= YEAR_2000 && timestamp <= YEAR_2030;
+    final long YEAR_2100 = 4102416000000L;
+    return timestamp >= YEAR_2000 && timestamp <= YEAR_2100;
 }
 
     /**

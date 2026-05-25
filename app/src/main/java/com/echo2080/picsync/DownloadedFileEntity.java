@@ -50,6 +50,11 @@ public class DownloadedFileEntity {
         return captureTime;
     }
 
+    public void setCaptureTime(long captureTime) {
+        this.captureTime = captureTime;
+    }
+
+
     public int getIsDeleted() {
         return isDeleted;
     }
