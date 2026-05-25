@@ -70,10 +70,6 @@ public class FullScreenActivity extends AppCompatActivity {
         viewPager.setAdapter(adapter);
         viewPager.setCurrentItem(currentPosition, false);
 
-        SharedPreferences prefs = this.getSharedPreferences("AppSettings", MODE_PRIVATE);
-        isSftp = prefs.getBoolean("is_sftp", false);
-
-
         viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
             public void onPageSelected(int position) {
@@ -148,15 +144,7 @@ public class FullScreenActivity extends AppCompatActivity {
     private boolean downloadFromFtp(String remoteFilePath, File localFile, DownloadProgressListener listener) {
         // 假设你已经在类的成员变量中初始化好了 ftpClient (例如: FtpInterface ftpClient = new SftpHelper();)
 
-        FtpInterface ftpHelper = null;
-        if(isSftp)
-        {
-            ftpHelper = new SftpHelper(this);
-        }
-        else
-        {
-            ftpHelper = new FtpHelper(this);
-        }
+        FtpInterface ftpHelper = new FtpHelperProxy(this);
 
         downloadSuccess = false;
 

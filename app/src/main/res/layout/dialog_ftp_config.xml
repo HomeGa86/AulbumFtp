@@ -4,66 +4,106 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- 2. 内部嵌套一个垂直的 LinearLayout -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="20dp">
+        android:orientation="vertical"
+        android:padding="20dp">
 
-    <EditText
-        android:id="@+id/et_ftp_host"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/ftp_name" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/primary_server"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
 
-    <EditText
-        android:id="@+id/et_ftp_port"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/ftp_port"
-        android:inputType="number" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:background="@drawable/bg_setting_group"
+            android:layout_marginBottom="20dp">
 
-    <EditText
-        android:id="@+id/et_ftp_user"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/user_name" />
+            <EditText
+                android:id="@+id/et_ftp_host"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/ftp_name" />
 
-    <EditText
-        android:id="@+id/et_ftp_pass"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/password"
-        android:inputType="textPassword" />
+            <EditText
+                android:id="@+id/et_ftp_port"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/ftp_port"
+                android:inputType="number" />
 
-    <EditText
-        android:id="@+id/et_ftp_base_path"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/base_path" />
+            <EditText
+                android:id="@+id/et_ftp_user"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/user_name" />
 
-    <CheckBox
-        android:id="@+id/cb_is_sftp"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:text="@string/is_sftp"
-        android:checked="true" />
+            <EditText
+                android:id="@+id/et_ftp_pass"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/password"
+                android:inputType="textPassword" />
 
-    <EditText
-        android:id="@+id/et_backup_ftp_host"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/backup_ftp_name" />
+            <EditText
+                android:id="@+id/et_ftp_base_path"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/base_path" />
 
-    <EditText
-        android:id="@+id/et_backup_ftp_port"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/backup_ftp_port"
-        android:inputType="number" />
+            <CheckBox
+                android:id="@+id/cb_is_sftp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/is_sftp" />
 
-</LinearLayout>
+        </LinearLayout>
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/backup_server"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:background="@drawable/bg_setting_group">
+
+            <EditText
+                android:id="@+id/et_backup_ftp_host"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/backup_ftp_name" />
+
+            <EditText
+                android:id="@+id/et_backup_ftp_port"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/backup_ftp_port"
+                android:inputType="number" />
+
+            <CheckBox
+                android:id="@+id/cb_backup_is_sftp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/is_sftp"
+                android:layout_marginTop="10dp"
+                android:checked="true" />
+
+        </LinearLayout>
+
+    </LinearLayout>
 </ScrollView>

@@ -38,5 +38,6 @@
     <string name="log_copied_toast">Logs copied into clipboard</string>
     <string name="reconnected">Server reconnected</string>
     <string name="reconnecting" >Reconnecting</string>
-
+    <string name="primary_server" >Primary Server</string>
+    <string name="backup_server" >Backup Server</string>
 </resources>

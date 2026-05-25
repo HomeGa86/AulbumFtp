@@ -85,15 +85,7 @@ public class SyncService extends Service implements DownloadProgressListener {
         logHelper = new LogHelper(this);
         database = AppDatabase.getInstance(this);
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        Boolean isSftp = prefs.getBoolean("is_sftp", false);
-        if(isSftp)
-        {
-            ftpHelper = new SftpHelper(this);
-        }
-        else
-        {
-            ftpHelper = new FtpHelper(this);
-        }
+        ftpHelper = new FtpHelperProxy(this);
 
         executor = Executors.newSingleThreadExecutor();
         mainHandler = new Handler(Looper.getMainLooper());
@@ -292,14 +284,15 @@ public class SyncService extends Service implements DownloadProgressListener {
                     }
                 }
 
-                // 💡 智能判断：如果是 SftpHelper 且已经有部分下载数据，则调用断点续传方法
-                if (ftpHelper instanceof SftpHelper && downloadedBytes > 0) {
-                    SftpHelper sftpHelper = (SftpHelper) ftpHelper;
-                    // 传入当前的 downloadedBytes 作为起始偏移量
+                FtpInterface realHelper = ftpHelper;
+                if (ftpHelper instanceof FtpHelperProxy) {
+                    realHelper = ((FtpHelperProxy) ftpHelper).getActiveHelper();
+                }
+
+                if (realHelper instanceof SftpHelper && downloadedBytes > 0) {
+                    SftpHelper sftpHelper = (SftpHelper) realHelper;
                     downloadSuccess = sftpHelper.downloadFileWithResume(remotePath, tempFile, downloadedBytes, this);
                 } else {
-                    // 普通 FtpHelper 或者第一次下载，走原有逻辑
-                    // 注意：你的 FtpInterface 里的 downloadFile 最好也支持传入 listener，这里暂用 null
                     downloadSuccess = ftpHelper.downloadFile(remotePath, tempFile, this);
                 }
 
