@@ -40,5 +40,8 @@
     <string name="reconnecting" >正在重新连接</string>
     <string name="primary_server" >主服务器</string>
     <string name="backup_server" >备用服务器</string>
+    <string name="check_sync_status">正在检查同步状态</string>
+    <string name="notification_title">相册FTP</string>
+    <string name="download_notification_name">图片/视频下载进度</string>
 
 </resources>

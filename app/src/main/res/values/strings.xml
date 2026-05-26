@@ -40,4 +40,7 @@
     <string name="reconnecting" >Reconnecting</string>
     <string name="primary_server" >Primary Server</string>
     <string name="backup_server" >Backup Server</string>
+    <string name="check_sync_status">Checking syncing status</string>
+    <string name="notification_title">AlbumFtp</string>
+    <string name="download_notification_name">Media Downloading Progress</string>
 </resources>

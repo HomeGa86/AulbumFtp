@@ -104,7 +104,7 @@ public class SyncService extends Service implements DownloadProgressListener {
         if (isRunning.get()) {
             return START_STICKY;
         }
-        startForeground(NOTIFICATION_ID, createNotification("正在检查同步状态..."));
+        startForeground(NOTIFICATION_ID, createNotification(getString(R.string.check_sync_status)));
 
         executor.execute(() -> {
             try {
@@ -449,10 +449,10 @@ public class SyncService extends Service implements DownloadProgressListener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "多媒体同步服务",
+                    getString(R.string.download_notification_name),
                     NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("用于显示媒体数据同步进度");
+            channel.setDescription(getString(R.string.download_notification_name));
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 manager.createNotificationChannel(channel);
@@ -468,7 +468,7 @@ public class SyncService extends Service implements DownloadProgressListener {
         );
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("PicSync 同步服务")
+                .setContentTitle(getString(R.string.notification_title))
                 .setContentText(content)
                 .setSmallIcon(android.R.drawable.ic_menu_gallery)
                 .setContentIntent(pendingIntent)
