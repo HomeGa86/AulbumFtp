@@ -76,13 +76,23 @@ public class FtpHelper implements FtpInterface {
 
     private boolean connectToServer(String host, int port, String user, String password) {
         try {
+            if(Thread.currentThread().isInterrupted())
+            {
+                return false;
+            }
             ftpClient = new FTPClient();
             ftpClient.setControlEncoding("UTF-8");
 
             // 设置连接超时时间（比如10秒），防止卡死太久
-            ftpClient.setConnectTimeout(10000);
+            ftpClient.setConnectTimeout(3000);
+            ftpClient.setDefaultTimeout(3000);
+            ftpClient.setDataTimeout(10000);
 
             ftpClient.connect(host, port);
+            if(Thread.currentThread().isInterrupted())
+            {
+                return false;
+            }
             int replyCode = ftpClient.getReplyCode();
             if (!FTPReply.isPositiveCompletion(replyCode)) {
                 logHelper.logToFile("Failed to connect to " + host + ":" + port + "@" + user);
@@ -92,6 +102,10 @@ public class FtpHelper implements FtpInterface {
             }
 
             boolean loginSuccess = ftpClient.login(user, password);
+            if(Thread.currentThread().isInterrupted())
+            {
+                return false;
+            }
             if (!loginSuccess) {
                 logHelper.logToFile("Failed to login to " + host + ":" + port + "@" + user + ". Username or Password might be wrong.");
                 disconnect();
@@ -100,7 +114,15 @@ public class FtpHelper implements FtpInterface {
 
             // 统一配置传输模式
             ftpClient.enterLocalPassiveMode();
+            if(Thread.currentThread().isInterrupted())
+            {
+                return false;
+            }
             ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+            if(Thread.currentThread().isInterrupted())
+            {
+                return false;
+            }
             ftpClient.setControlKeepAliveTimeout(300); // 5分钟保活
 
             Log.d("FTP_CONNECT", "成功连接到服务器: " + host + ":" + port);
@@ -238,7 +260,7 @@ public class FtpHelper implements FtpInterface {
             long startTime = System.currentTimeMillis();
             long lastUpdate = startTime;
 
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
+            while (!Thread.currentThread().isInterrupted() && (bytesRead = inputStream.read(buffer)) != -1) {
                 fos.write(buffer, 0, bytesRead);
                 totalBytesRead += bytesRead;
 
@@ -262,19 +284,30 @@ public class FtpHelper implements FtpInterface {
                 }
             }
 
-            // 必须调用 completePendingCommand 来确认传输彻底完成
-            downloadSuccess = ftpClient.completePendingCommand();
-
-            // 确保最后回调一次 100% 的状态
-            if (downloadSuccess && listener != null) {
-                mainHandler.post(() -> listener.onProgress(100,"100.00%"));
+            // ✅ 关键：循环退出后，先检查是否因中断而退出
+            // 如果是被 cancel(true) 中断的，不要调用 completePendingCommand()
+            if (Thread.currentThread().isInterrupted()) {
+                android.util.Log.d("FTP_DOWNLOAD", "Download interrupted: " + remoteFilePath);
+                downloadSuccess = false;
+            } else {
+                // 正常传输完毕，确认 FTP 命令完成
+                downloadSuccess = ftpClient.completePendingCommand();
+                if (downloadSuccess && listener != null) {
+                    mainHandler.post(() -> listener.onProgress(100, "100.00%"));
+                }
             }
-
         } catch (IOException e) {
-            logHelper.logToFile("Failed to download file " + remoteFilePath);
-            logHelper.logToFile(android.util.Log.getStackTraceString(e));
-            e.printStackTrace();
             downloadSuccess = false;
+            // ✅ 关键：区分中断异常和真实异常
+            // 当 cancel(true) 触发后，try-with-resources 关闭流或 Socket 超时
+            // 都可能抛出 IOException，这不是真正的下载失败
+            if (Thread.currentThread().isInterrupted()) {
+                android.util.Log.d("FTP_DOWNLOAD", "Download cancelled (IOException): " + remoteFilePath);
+            } else {
+                logHelper.logToFile("Failed to download file " + remoteFilePath);
+                logHelper.logToFile(android.util.Log.getStackTraceString(e));
+                e.printStackTrace();
+            }
         } finally {
             // 💡 修复点：在这里进行 Lambda 引用，此时 downloadSuccess 已经是确定值了
             if (listener != null) {

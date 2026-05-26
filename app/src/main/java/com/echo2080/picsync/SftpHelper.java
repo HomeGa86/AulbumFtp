@@ -93,11 +93,19 @@ public class SftpHelper implements FtpInterface {
             session = jsch.getSession(user, host, port);
             session.setPassword(password);
             session.setConfig("StrictHostKeyChecking", "no");
-            session.setTimeout(30000);
+            session.setTimeout(10000);
+            if(Thread.currentThread().isInterrupted())
+            {
+                return false;
+            }
             session.connect();
 
             Channel channel = session.openChannel("sftp");
-            channel.connect();
+            if(Thread.currentThread().isInterrupted())
+            {
+                return false;
+            }
+            channel.connect(10000);
             channelSftp = (ChannelSftp) channel;
 
             Log.d("SFTP_CONNECT", "成功连接到 SFTP 服务器: " + host + ":" + port);
@@ -245,6 +253,9 @@ public class SftpHelper implements FtpInterface {
 
                 @Override
                 public boolean count(long count) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        return false;
+                    }
                     totalBytesRead += count; // 累加本次传输的字节数
                     long currentTime = System.currentTimeMillis();
 
@@ -274,13 +285,23 @@ public class SftpHelper implements FtpInterface {
                 }
             });
 
-            downloadSuccess = true;
+            if (Thread.currentThread().isInterrupted()) {
+                downloadSuccess = false;
+            } else {
+                downloadSuccess = true;
+            }
 
         } catch (Exception e) {
-            logHelper.logToFile("Failed to download file " + remoteFilePath);
-            logHelper.logToFile(android.util.Log.getStackTraceString(e));
-            e.printStackTrace();
             downloadSuccess = false;
+            if (Thread.currentThread().isInterrupted()) {
+                // 被 cancel(true) 触发的中断，JSch 会抛 SftpException 或 IOException
+                // 这是预期的取消行为，不是错误
+                android.util.Log.d("FTP_DOWNLOAD", "Download cancelled: " + remoteFilePath);
+            } else {
+                logHelper.logToFile("Failed to download file " + remoteFilePath);
+                logHelper.logToFile(android.util.Log.getStackTraceString(e));
+                e.printStackTrace();
+            }
         } finally {
             // 💡 修复点：在这里统一进行最终的进度和状态回调
             if (listener != null) {

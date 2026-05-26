@@ -16,6 +16,8 @@ public class FtpHelperProxy implements FtpInterface {
     private FtpInterface backupHelper;
     private FtpInterface activeHelper;
     private boolean hasBackup = false;
+    private static volatile String lastSuccessType = null;
+
 
     public FtpHelperProxy(Context context) {
         this.context = context.getApplicationContext();
@@ -62,35 +64,66 @@ public class FtpHelperProxy implements FtpInterface {
 
     @Override
     public boolean connect(Context context) {
-        Log.d(TAG, "Connecting to primary server...");
-        if (primaryHelper.connect(context)) {
-            activeHelper = primaryHelper;
-            Log.d(TAG, "Primary server connected");
+        // 决定首选和备选
+        FtpInterface firstChoice;
+        FtpInterface secondChoice;
+        String firstType;
+        String secondType;
+
+        if ("BACKUP".equals(lastSuccessType) && hasBackup && backupHelper != null) {
+            // 本次启动后曾成功连过备用服务器 → 优先连备用
+            firstChoice = backupHelper;
+            firstType = "BACKUP";
+            secondChoice = primaryHelper;
+            secondType = "PRIMARY";
+            Log.d(TAG, "Last success was BACKUP, trying backup first...");
+        } else {
+            // 默认情况（含首次启动、上次成功的是主服务器、或无备用服务器）→ 优先连主服务器
+            firstChoice = primaryHelper;
+            firstType = "PRIMARY";
+            secondChoice = hasBackup ? backupHelper : null;
+            secondType = "BACKUP";
+            Log.d(TAG, "Trying primary server first...");
+        }
+
+        // 尝试首选服务器
+        if (firstChoice.connect(context)) {
+            activeHelper = firstChoice;
+            lastSuccessType = firstType; // ✅ 记录本次成功类型
+            Log.d(TAG, firstType + " server connected");
             return true;
         }
 
-        if (hasBackup && backupHelper != null) {
-            Log.d(TAG, "Connecting to backup server...");
-            if (backupHelper.connect(context)) {
-                activeHelper = backupHelper;
-                Log.d(TAG, "Backup server connected");
+        // 首选失败，尝试备选服务器
+        if (secondChoice != null) {
+            Log.d(TAG, firstType + " failed, falling back to " + secondType + "...");
+            if (secondChoice.connect(context)) {
+                activeHelper = secondChoice;
+                lastSuccessType = secondType; // ✅ 记录本次成功类型
+                Log.d(TAG, secondType + " server connected (fallback)");
                 return true;
             }
         }
 
         Log.e(TAG, "Failed to connect to any server");
         activeHelper = null;
+        // ❌ 注意：全部失败时不重置 lastSuccessType
+        // 保留上次成功记录，下次重试时仍能优先尝试之前可用的服务器
         return false;
     }
+
 
     @Override
     public boolean reconnect(Context context) {
         if (activeHelper != null) {
-            return activeHelper.reconnect(context);
+            boolean success = activeHelper.reconnect(context);
+            if (success) {
+                lastSuccessType = (activeHelper == backupHelper) ? "BACKUP" : "PRIMARY";
+            }
+            return success;
         }
         return connect(context);
     }
-
     @Override
     public void disconnect() {
         if (primaryHelper != null) primaryHelper.disconnect();
@@ -131,5 +164,10 @@ public class FtpHelperProxy implements FtpInterface {
     private int parseIntSafe(String value, int defaultValue) {
         try { return Integer.parseInt(value); }
         catch (NumberFormatException e) { return defaultValue; }
+    }
+
+    public static void resetLastSuccessType()
+    {
+        lastSuccessType = null;
     }
 }

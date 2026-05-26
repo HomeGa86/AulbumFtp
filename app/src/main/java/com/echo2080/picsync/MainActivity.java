@@ -166,6 +166,7 @@ public class MainActivity extends AppCompatActivity {
                         database.serverFileDao().deleteAll();
                         Log.d("MainActivity", "FTP配置已更改，已清空服务器文件缓存表。");
 
+                        FtpHelperProxy.resetLastSuccessType();
                         SyncService.resetFullSyncTimestamp(this);
                         startSyncServiceWithDelay();
                     }).start();
