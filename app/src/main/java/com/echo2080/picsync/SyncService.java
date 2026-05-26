@@ -1,4 +1,4 @@
-package com.echo2080.picsync;
+package site.rossiluo.picsync;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -415,7 +415,7 @@ public class SyncService extends Service implements DownloadProgressListener {
         isRunning.set(false);
 
         if (successCount > 0) {
-            Intent intent = new Intent("com.echo2080.picsync.REFRESH_IMAGES");
+            Intent intent = new Intent("site.rossiluo.picsync.REFRESH_IMAGES");
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         }
     }

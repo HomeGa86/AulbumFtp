@@ -1,4 +1,4 @@
-package com.echo2080.picsync;
+package site.rossiluo.picsync;
 
 import org.junit.Test;
 

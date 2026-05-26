@@ -1,4 +1,4 @@
-package com.echo2080.picsync;
+package site.rossiluo.picsync;
 
 public class PhotoItem {
     public String localPath;      // 本地缩略图路径

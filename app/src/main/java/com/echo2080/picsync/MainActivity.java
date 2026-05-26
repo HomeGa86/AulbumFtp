@@ -1,4 +1,4 @@
-package com.echo2080.picsync;
+package site.rossiluo.picsync;
 
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
@@ -86,7 +86,7 @@ public class MainActivity extends AppCompatActivity {
 
         LocalBroadcastManager.getInstance(this).registerReceiver(
                 syncCompleteReceiver,
-                new IntentFilter("com.echo2080.picsync.REFRESH_IMAGES")
+                new IntentFilter("site.rossiluo.picsync.REFRESH_IMAGES")
         );
 
         GridLayoutManager gridLayoutManager = new GridLayoutManager(this, 3);

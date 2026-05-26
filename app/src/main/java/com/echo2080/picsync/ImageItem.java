@@ -1,4 +1,4 @@
-package com.echo2080.picsync;
+package site.rossiluo.picsync;
 
 public class ImageItem {
     public static final int TYPE_HEADER = 0;   // 标题类型
