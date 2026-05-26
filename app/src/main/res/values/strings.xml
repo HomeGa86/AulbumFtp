@@ -43,4 +43,6 @@
     <string name="check_sync_status">Checking syncing status</string>
     <string name="notification_title">AlbumFtp</string>
     <string name="download_notification_name">Media Downloading Progress</string>
+    <string name="no_log">No log yet</string>
+
 </resources>

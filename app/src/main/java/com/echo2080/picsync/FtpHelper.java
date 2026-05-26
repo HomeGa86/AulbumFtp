@@ -267,7 +267,7 @@ public class FtpHelper implements FtpInterface {
 
             // 确保最后回调一次 100% 的状态
             if (downloadSuccess && listener != null) {
-                mainHandler.post(() -> listener.onProgress(100,"100.00% - 完成"));
+                mainHandler.post(() -> listener.onProgress(100,"100.00%"));
             }
 
         } catch (IOException e) {

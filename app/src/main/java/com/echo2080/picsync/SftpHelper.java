@@ -286,7 +286,7 @@ public class SftpHelper implements FtpInterface {
             if (listener != null) {
                 final boolean isSuccess = downloadSuccess;
                 if (isSuccess) {
-                    mainHandler.post(() -> listener.onProgress(100,"100.00% - 完成"));
+                    mainHandler.post(() -> listener.onProgress(100,"100.00%"));
                 }
                 mainHandler.post(() -> listener.onFinish(isSuccess));
             }

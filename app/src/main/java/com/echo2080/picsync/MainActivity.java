@@ -210,7 +210,7 @@ public class MainActivity extends AppCompatActivity {
             String logContent = logHelper.readAllLogFile(this);
 
             if (logContent == null || logContent.trim().isEmpty()) {
-                Toast.makeText(this, "No logs", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, getString(R.string.no_log), Toast.LENGTH_SHORT).show();
                 return true;
             }
 
@@ -362,7 +362,15 @@ public class MainActivity extends AppCompatActivity {
             Collections.sort(loadedItems, (item1, item2) -> Long.compare(item2.captureTime, item1.captureTime));
 
             List<ImageItem> finalList = new ArrayList<>();
-            SimpleDateFormat groupFormat = new SimpleDateFormat("yyyy年MM月", Locale.CHINESE);
+            Locale currentLocale = Locale.getDefault();
+            boolean isChinese = currentLocale.getLanguage().equals(Locale.CHINESE.getLanguage())
+                    || currentLocale.equals(Locale.SIMPLIFIED_CHINESE)
+                    || currentLocale.equals(Locale.TRADITIONAL_CHINESE);
+
+            SimpleDateFormat groupFormat = isChinese
+                    ? new SimpleDateFormat("yyyy年MM月", Locale.CHINESE)
+                    : new SimpleDateFormat("MMMM yyyy", Locale.ENGLISH);
+
             String lastGroupKey = "";
 
             for (ImageItem item : loadedItems) {

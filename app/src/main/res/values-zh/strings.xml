@@ -43,5 +43,6 @@
     <string name="check_sync_status">正在检查同步状态</string>
     <string name="notification_title">相册FTP</string>
     <string name="download_notification_name">图片/视频下载进度</string>
+    <string name="no_log">还没有日志数据</string>
 
 </resources>
