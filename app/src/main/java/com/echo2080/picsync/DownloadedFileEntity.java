@@ -1,4 +1,4 @@
-package site.rossiluo.picsync;
+package com.echo2080.picsync;
 
 import androidx.annotation.NonNull;
 import androidx.room.ColumnInfo;

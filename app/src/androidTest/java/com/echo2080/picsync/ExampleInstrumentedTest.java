@@ -1,4 +1,4 @@
-package site.rossiluo.picsync;
+package com.echo2080.picsync;
 
 import android.content.Context;
 
@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
     public void useAppContext() {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals("site.rossiluo.picsync", appContext.getPackageName());
+        assertEquals("com.echo2080.picsync", appContext.getPackageName());
     }
 }

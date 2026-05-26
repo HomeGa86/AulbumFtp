@@ -1,4 +1,4 @@
-package site.rossiluo.picsync;
+package com.echo2080.picsync;
 
 public interface DownloadProgressListener {
     void onProgress(int intProgress,String progressText); // 用于更新进度文字（如：50% - 2.5 MB/s）

@@ -1,5 +1,5 @@
 // 文件名：ServerFileEntity.java
-package site.rossiluo.picsync;
+package com.echo2080.picsync;
 
 import androidx.room.Entity;
 import androidx.room.Index;

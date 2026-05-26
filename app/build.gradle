@@ -8,7 +8,7 @@ android {
     buildToolsVersion "33.0.0"
 
     defaultConfig {
-        applicationId "site.rossiluo.picsync"
+        applicationId "com.echo2080.picsync"
         minSdkVersion 29
         targetSdkVersion 33
         versionCode 2

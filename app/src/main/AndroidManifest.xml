@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="site.rossiluo.picsync">
+    package="com.echo2080.picsync">
 
     <!-- 1. 网络相关 (FTP 必备) -->
     <uses-permission android:name="android.permission.INTERNET" />
