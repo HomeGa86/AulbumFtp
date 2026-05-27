@@ -1,8 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
 <androidx.recyclerview.widget.RecyclerView
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/recycler_view"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="4dp"
-    android:clipToPadding="false"/>
+    android:clipToPadding="false" />
+
+    <View
+        android:id="@+id/custom_scrollbar_thumb"
+        android:layout_width="10dp"
+        android:layout_height="60dp"
+        android:layout_gravity="end|top"
+        android:background="@drawable/scrollbar_thumb_bg"
+        android:elevation="4dp" />
+
+</FrameLayout>

@@ -21,6 +21,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -62,6 +63,10 @@ public class MainActivity extends AppCompatActivity {
 
     private SyncService syncService;
     private boolean isBound = false;
+    private View customScrollbarThumb;
+    private float lastTouchY = -1f;
+    private boolean isDraggingScrollbar = false;
+
 
 
     private BroadcastReceiver syncCompleteReceiver = new BroadcastReceiver() {
@@ -106,6 +111,9 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(gridLayoutManager);
         adapter = new ImageAdapter(this, imagePathList);
         recyclerView.setAdapter(adapter);
+        customScrollbarThumb = findViewById(R.id.custom_scrollbar_thumb);
+        setupCustomScrollbar();
+
     }
 
     private void showFtpConfigDialog(final SharedPreferences prefs) {
@@ -390,6 +398,7 @@ public class MainActivity extends AppCompatActivity {
                 imagePathList.addAll(finalList);
                 adapter.notifyDataSetChanged();
                 queryFtpPathsForAllImages();
+                recyclerView.postDelayed(this::updateThumbPosition, 200);
             });
         }).start();
     }
@@ -487,6 +496,101 @@ public class MainActivity extends AppCompatActivity {
             isBound = false;
         }
     }
+
+    private void setupCustomScrollbar() {
+        // 1. 监听 RecyclerView 滑动 → 更新滑块位置（仅在非拖动状态下生效）
+        recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
+                if (!isDraggingScrollbar) {
+                    updateThumbPosition();
+                }
+            }
+        });
+
+        // 2. 监听滑块触摸事件 → 拖动滑块控制 RecyclerView
+        customScrollbarThumb.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    isDraggingScrollbar = true;
+                    lastTouchY = event.getRawY();
+                    v.setAlpha(1.0f);
+                    return true;
+
+                case MotionEvent.ACTION_MOVE:
+                    float currentY = event.getRawY();
+                    float deltaY = currentY - lastTouchY;
+                    lastTouchY = currentY;
+
+                    // 获取当前滑块位置和轨道参数
+                    float currentThumbY = v.getY();
+                    float trackHeight = ((View) v.getParent()).getHeight() - v.getHeight();
+
+                    // 计算新的滑块Y坐标（限制在轨道范围内）
+                    float newThumbY = Math.max(0, Math.min(currentThumbY + deltaY, trackHeight));
+
+                    // 【核心修复】直接同步设置滑块位置，不等待 onScrolled 回调
+                    v.setY(newThumbY);
+
+                    // 根据新位置反算列表应该滚动到的绝对偏移量
+                    int scrollRange = recyclerView.computeVerticalScrollRange();
+                    int scrollExtent = recyclerView.computeVerticalScrollExtent();
+                    int maxScroll = scrollRange - scrollExtent;
+
+                    if (trackHeight > 0 && maxScroll > 0) {
+                        float ratio = newThumbY / trackHeight;
+                        int targetOffset = (int) (ratio * maxScroll);
+
+                        // 使用 scrollTo 而不是 scrollBy，避免累积误差和惯性延迟
+                        // 注意：RecyclerView 没有直接的 scrollTo(offset)，需要通过 LayoutManager 实现
+                        // 这里改用精确的 scrollBy 差值计算
+                        int currentOffset = recyclerView.computeVerticalScrollOffset();
+                        int actualDelta = targetOffset - currentOffset;
+                        if (actualDelta != 0) {
+                            recyclerView.scrollBy(0, actualDelta);
+                        }
+                    }
+                    return true;
+
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    isDraggingScrollbar = false;
+                    lastTouchY = -1f;
+                    v.setAlpha(0.7f);
+                    // 【关键】手指抬起时，强制同步一次位置，消除最后的跳变
+                    updateThumbPosition();
+                    return true;
+            }
+            return false;
+        });
+
+        // 3. 初始延迟更新一次位置
+        recyclerView.postDelayed(this::updateThumbPosition, 300);
+    }
+
+
+    private void updateThumbPosition() {
+        if (customScrollbarThumb == null || recyclerView == null) return;
+
+        int scrollRange = recyclerView.computeVerticalScrollRange();
+        int scrollOffset = recyclerView.computeVerticalScrollOffset();
+        int scrollExtent = recyclerView.computeVerticalScrollExtent();
+        int maxScroll = scrollRange - scrollExtent;
+
+        if (maxScroll <= 0) {
+            customScrollbarThumb.setVisibility(View.GONE);
+            return;
+        }
+        customScrollbarThumb.setVisibility(View.VISIBLE);
+
+        float trackHeight = ((View) customScrollbarThumb.getParent()).getHeight() - customScrollbarThumb.getHeight();
+        float ratio = (float) scrollOffset / maxScroll;
+        float newY = ratio * trackHeight;
+
+        customScrollbarThumb.setY(Math.max(0, Math.min(newY, trackHeight)));
+    }
+
+
 
 
 }
