@@ -6,12 +6,12 @@
     <string name="sync_complete">Sync Complete</string>
     <string name="sync_begin">Downloading</string>
     <string name="save">Save</string>
-    <string name="ftp_set">FTP Server Setting</string>
+    <string name="ftp_set">FTP/SFTP Server Setting</string>
     <string name="cancel">Cancel</string>
     <string name="no_need_sync">Sync again in {0} days</string>
     <string name="connecting">Connecting</string>
     <string name="failed_to_connect">Failed to connect</string>
-    <string name="loading_file_list">Loading file list from FTP</string>
+    <string name="loading_file_list">Loading file list from server</string>
     <string name="failed_to_load_list">Failed to list</string>
     <string name="x_files_to_download">{0} files to download</string>
     <string name="downloading">Downloading {0}/{1}:{2}</string>

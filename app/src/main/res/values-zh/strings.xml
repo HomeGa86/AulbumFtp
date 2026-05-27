@@ -6,12 +6,12 @@
     <string name="sync_complete">同步完成</string>
     <string name="sync_begin">同步中</string>
     <string name="save">保存</string>
-    <string name="ftp_set">配置FTP服务器信息</string>
+    <string name="ftp_set">配置FTP/SFTP服务器信息</string>
     <string name="cancel">取消</string>
     <string name="no_need_sync">{0}天后再下载</string>
-    <string name="connecting">连接FTP服务器...</string>
+    <string name="connecting">连接服务器...</string>
     <string name="failed_to_connect">连接失败</string>
-    <string name="loading_file_list">正在从FTP读取文件列表</string>
+    <string name="loading_file_list">正在从服务器读取文件列表</string>
     <string name="failed_to_load_list">读取列表失败</string>
     <string name="x_files_to_download">{0}新文件</string>
     <string name="downloading">正在下载{0}/{1}:{2}</string>
