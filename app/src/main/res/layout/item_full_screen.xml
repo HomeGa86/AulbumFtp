@@ -5,7 +5,7 @@
     android:background="#000000"> <!-- 💡 新增：全黑背景，避免大图或视频比例不对时两边露白 -->
 
     <!-- 用于查看大图，或者在原视频文件未下载完时显示本地的视频首帧缩略图 -->
-    <com.github.chrisbanes.photoview.PhotoView
+    <com.echo2080.picsync.InterceptPhotoView
         android:id="@+id/photo_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

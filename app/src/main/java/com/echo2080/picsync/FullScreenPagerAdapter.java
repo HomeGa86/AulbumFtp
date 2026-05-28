@@ -12,6 +12,7 @@ import android.widget.VideoView;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.viewpager2.widget.ViewPager2;
 
 import com.bumptech.glide.Glide;
 import com.github.chrisbanes.photoview.PhotoView;
@@ -22,13 +23,16 @@ import java.util.Map;
 
 public class FullScreenPagerAdapter extends RecyclerView.Adapter<FullScreenPagerAdapter.ViewHolder> {
 
+    private final ViewPager2 viewPager;
     private Context context;
 
     // 用来持有当前活动中的多个 VideoView 引用
     private Map<Integer, VideoView> activeVideoViews = new HashMap<>();
 
-    public FullScreenPagerAdapter(Context context) {
+    public FullScreenPagerAdapter(Context context, ViewPager2 viewPager) {
+
         this.context = context;
+        this.viewPager = viewPager;
     }
 
     @NonNull
@@ -103,6 +107,13 @@ public class FullScreenPagerAdapter extends RecyclerView.Adapter<FullScreenPager
                 Log.d("FullScreenAdapter", "原视频未就绪，使用 Glide 显示封面");
                 holder.photoView.setVisibility(View.VISIBLE);
                 holder.videoView.setVisibility(View.GONE);
+                holder.photoView.setOnMatrixChangeListener(rect -> {
+                    if (holder.photoView.getScale() > 1.0f) {
+                        viewPager.setUserInputEnabled(false);
+                    } else {
+                        viewPager.setUserInputEnabled(true);
+                    }
+                });
 
                 // 移除可能因为 ViewHolder 复用残留的视频控制层
                 holder.videoView.stopPlayback();
@@ -119,6 +130,17 @@ public class FullScreenPagerAdapter extends RecyclerView.Adapter<FullScreenPager
             // 🖼️ 分流处理 2：当前条目是普通图片
             holder.photoView.setVisibility(View.VISIBLE);
             holder.videoView.setVisibility(View.GONE);
+            holder.photoView.setOnMatrixChangeListener(rect -> {
+                // Determine if the user is currently zoomed in
+                boolean isZoomed = holder.photoView.getScale() > 1.1f;
+
+                // Disable the ViewPager2 swiping if zoomed
+                // You may need to pass a reference of the ViewPager2 to your adapter
+                viewPager.setUserInputEnabled(!isZoomed);
+            });
+
+// Important: Reset when a new page is selected or the view is recycled
+            holder.photoView.setScale(1.0f);
 
             if (holder.videoView.isPlaying()) {
                 holder.videoView.stopPlayback();
@@ -162,7 +184,7 @@ public class FullScreenPagerAdapter extends RecyclerView.Adapter<FullScreenPager
     }
 
     static class ViewHolder extends RecyclerView.ViewHolder {
-        PhotoView photoView;
+        InterceptPhotoView photoView;
         VideoView videoView;
 
         ViewHolder(@NonNull View itemView) {

@@ -59,7 +59,7 @@ public class FullScreenActivity extends AppCompatActivity {
         if (!cacheDir.exists()) cacheDir.mkdirs();
 
         viewPager = findViewById(R.id.view_pager);
-        adapter = new FullScreenPagerAdapter(this);
+        adapter = new FullScreenPagerAdapter(this,viewPager);
         viewPager.setAdapter(adapter);
         viewPager.setCurrentItem(currentPosition, false);
 
