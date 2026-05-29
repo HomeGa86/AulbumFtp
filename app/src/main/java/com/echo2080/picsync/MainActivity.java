@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentName;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -18,6 +20,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -39,6 +42,9 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -48,6 +54,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -66,6 +74,8 @@ public class MainActivity extends AppCompatActivity {
     private View customScrollbarThumb;
     private float lastTouchY = -1f;
     private boolean isDraggingScrollbar = false;
+    private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor();
+
 
 
 
@@ -214,6 +224,10 @@ public class MainActivity extends AppCompatActivity {
             showLogDialog();
             return true;
         }
+        else if (id == R.id.action_save) {
+            downloadAndSaveSelectedImages();
+            return true;
+        }
         else if (id == R.id.action_copy_log) {
             LogHelper logHelper = new LogHelper(this);
             String logContent = logHelper.readAllLogFile(this);
@@ -296,6 +310,124 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
+    /**
+     * 将本地文件保存到系统相册（同时支持图片和视频）
+     */
+    private Uri saveToGallery(Context context, File sourceFile, String mimeType) {
+        boolean isVideo = mimeType.startsWith("video/");
+
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, sourceFile.getName());
+        values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+        values.put(MediaStore.MediaColumns.SIZE, sourceFile.length());
+        // 图片和视频分别存到 DCIM/PicSync 下
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DCIM + "/PicSync");
+        values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+
+        ContentResolver resolver = context.getContentResolver();
+        // ✅ 关键：根据类型选择不同的 MediaStore 集合
+        Uri contentUri = isVideo
+                ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+
+        Uri uri = resolver.insert(contentUri, values);
+        if (uri == null) return null;
+
+        try (OutputStream os = resolver.openOutputStream(uri)) {
+            if (os == null) throw new IOException("Failed to open output stream");
+
+            FileInputStream fis = new FileInputStream(sourceFile);
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = fis.read(buffer)) != -1) {
+                os.write(buffer, 0, len);
+            }
+            fis.close();
+
+            // 写入完成，解除 PENDING 状态
+            values.clear();
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            resolver.update(uri, values, null, null);
+            return uri;
+        } catch (Exception e) {
+            e.printStackTrace();
+            resolver.delete(uri, null, null);
+            return null;
+        }
+    }
+
+    private void downloadAndSaveSelectedImages() {
+        List<ImageItem> selectedItems = adapter.getSelectedItems();
+        if (selectedItems.isEmpty()) {
+            Toast.makeText(this, R.string.no_file_selected, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        saveExecutor.execute(() -> {
+            int successCount = 0;
+            int failCount = 0;
+
+            for (ImageItem item : selectedItems) {
+                if (Thread.currentThread().isInterrupted()) break;
+
+                String ftpPath = item.getFtpPath();
+                String fileName = ftpPath.substring(ftpPath.lastIndexOf("/") + 1);
+
+                File tempFile = new File(getCacheDir(), "AlbumFtp_" + fileName);
+
+                boolean downloaded = downloadFromFtp(ftpPath, tempFile, null);
+
+                if (downloaded && tempFile.exists()) {
+                    String mime = getMimeType(fileName);
+                    Uri galleryUri = saveToGallery(this, tempFile, mime);
+
+
+                    if (galleryUri != null) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+                } else {
+                    failCount++;
+                }
+                if (tempFile.exists()) {
+                    tempFile.delete();
+                }
+            }
+
+            final int s = successCount;
+            final int f = failCount;
+            runOnUiThread(() -> {
+                adapter.clearSelection();
+                adapter.notifyDataSetChanged();
+
+                String msg;
+                if (f == 0) {
+                    msg = MessageFormat.format(getString(R.string.saved_to_gallery), s);
+                } else {
+                    msg = MessageFormat.format(getString(R.string.save_partial_result), s, f);
+                }
+                Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+            });
+        });
+    }
+
+    private boolean downloadFromFtp(String remoteFilePath, File localFile, DownloadProgressListener listener) {
+        FtpInterface ftpHelper = new FtpHelperProxy(this);
+        try {
+            if (Thread.currentThread().isInterrupted()) return false;
+            if (!ftpHelper.connect(this)) return false;
+            return ftpHelper.downloadFile(remoteFilePath, localFile, listener);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        } finally {
+            ftpHelper.disconnect();
+        }
+    }
+
+
+
+
     public void onItemLongSelected() {
         Toast.makeText(this, R.string.select_file, Toast.LENGTH_SHORT).show();
     }
@@ -306,6 +438,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         clearOriginalImageCache();
+        saveExecutor.shutdownNow();
         LocalBroadcastManager.getInstance(this).unregisterReceiver(syncCompleteReceiver);
     }
 
@@ -589,6 +722,32 @@ public class MainActivity extends AppCompatActivity {
 
         customScrollbarThumb.setY(Math.max(0, Math.min(newY, trackHeight)));
     }
+
+
+    private String getMimeType(String fileName) {
+        if (fileName == null) return "application/octet-stream";
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".png"))  return "image/png";
+        if (lower.endsWith(".gif"))  return "image/gif";
+        if (lower.endsWith(".bmp"))  return "image/bmp";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".mp4"))  return "video/mp4";
+        if (lower.endsWith(".mkv"))  return "video/x-matroska";
+        if (lower.endsWith(".mov"))  return "video/quicktime";
+        if (lower.endsWith(".avi"))  return "video/x-msvideo";
+        if (lower.endsWith(".3gp"))  return "video/3gpp";
+        return "application/octet-stream";
+    }
+
+    private boolean isVideoFile(String fileName) {
+        if (fileName == null) return false;
+        String lower = fileName.toLowerCase();
+        return lower.endsWith(".mp4") || lower.endsWith(".mkv")
+                || lower.endsWith(".mov") || lower.endsWith(".avi")
+                || lower.endsWith(".3gp");
+    }
+
 
 
 

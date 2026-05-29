@@ -44,5 +44,8 @@
     <string name="notification_title">AlbumFtp</string>
     <string name="download_notification_name">Media Downloading Progress</string>
     <string name="no_log">No log yet</string>
+    <string name="saved_to_gallery">{0} saved</string>
+    <string name="save_partial_result"> {0} saved, {1} failed</string>
+
 
 </resources>

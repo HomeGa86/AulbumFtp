@@ -10,6 +10,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+
     <!-- 3. 新增：Android 13+ 前台服务通知权限 -->
     <!-- 注意：在代码中需要动态申请此权限 (API 33+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
