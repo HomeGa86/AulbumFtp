@@ -39,6 +39,11 @@ public interface FtpInterface {
     boolean uploadFile(String remoteFilePath, File localFile);
 
     /**
+     * 上传本地文件到服务器（带进度监听）
+     */
+    boolean uploadFile(String remoteFilePath, File localFile, DownloadProgressListener listener);
+
+    /**
      * 获取文件大小
      */
     long getFileSize(String remoteFilePath);

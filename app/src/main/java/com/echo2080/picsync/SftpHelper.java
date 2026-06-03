@@ -406,6 +406,13 @@ public class SftpHelper implements FtpInterface {
      * 上传本地文件到 SFTP 服务器（支持自动创建目录）
      */
     public boolean uploadFile(String remoteFilePath, File localFile) {
+        return uploadFile(remoteFilePath, localFile, null);
+    }
+
+    /**
+     * 上传本地文件到 SFTP 服务器（带进度监听和断点续传）
+     */
+    public boolean uploadFile(String remoteFilePath, File localFile, DownloadProgressListener listener) {
         if (localFile == null || !localFile.exists()) {
             Log.d("SftpHelper", "uploadFile not existing:" + localFile.getAbsolutePath());
             logHelper.logToFile("Failed to uploadFile " + localFile.getAbsolutePath() + " to " + remoteFilePath);
@@ -420,8 +427,81 @@ public class SftpHelper implements FtpInterface {
                 return false;
             }
 
+            // 检查远程文件是否已存在，获取已上传的字节数（断点续传）
+            long uploadedBytes = 0;
+            try {
+                SftpATTRS attrs = channelSftp.stat(remoteFilePath);
+                if (attrs != null) {
+                    uploadedBytes = attrs.getSize();
+                    Log.d("SftpHelper", "Remote file exists, size: " + uploadedBytes + " bytes");
+                }
+            } catch (SftpException e) {
+                // 文件不存在，从头开始上传
+                uploadedBytes = 0;
+            }
+
+            final long fileSize = localFile.length();
+            final long startOffset = uploadedBytes;
+
             try (java.io.FileInputStream fis = new java.io.FileInputStream(localFile)) {
-                channelSftp.put(fis, remoteFilePath);
+                // 跳过已上传的部分
+                if (startOffset > 0) {
+                    fis.skip(startOffset);
+                }
+
+                channelSftp.put(fis, remoteFilePath, new com.jcraft.jsch.SftpProgressMonitor() {
+                    long totalBytesWritten = startOffset;
+                    long bytesWrittenThisSession = 0;
+                    long lastUpdate = System.currentTimeMillis();
+                    long startTime = System.currentTimeMillis();
+
+                    @Override
+                    public void init(int op, String src, String dest, long max) {
+                        this.totalBytesWritten = startOffset;
+                        this.bytesWrittenThisSession = 0;
+                        this.startTime = System.currentTimeMillis();
+                        this.lastUpdate = System.currentTimeMillis();
+                    }
+
+                    @Override
+                    public boolean count(long count) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            return false;
+                        }
+                        totalBytesWritten += count;
+                        bytesWrittenThisSession += count;
+                        long currentTime = System.currentTimeMillis();
+
+                        // 每隔 1000 毫秒（1秒）更新一次 UI
+                        if (currentTime - lastUpdate > 1000 && fileSize > 0) {
+                            long timeElapsed = (currentTime - startTime) / 1000;
+                            if (timeElapsed <= 0) timeElapsed = 1;
+
+                            long speedBytesPerSec = bytesWrittenThisSession / timeElapsed;
+                            String progressPercent = String.format("%.2f%%", (totalBytesWritten * 100.0 / fileSize));
+                            String speed = formatSize(speedBytesPerSec) + "/s";
+                            String statusText = progressPercent + " - " + speed;
+                            int intProgress = (int) ((totalBytesWritten * 100L) / fileSize);
+
+                            if (listener != null) {
+                                mainHandler.post(() -> listener.onProgress(intProgress, statusText));
+                            }
+                            lastUpdate = currentTime;
+                        }
+                        return true;
+                    }
+
+                    @Override
+                    public void end() {
+                        if (listener != null) {
+                            mainHandler.post(() -> listener.onProgress(100, "100.00%"));
+                        }
+                    }
+                }, ChannelSftp.RESUME);
+
+                if (listener != null) {
+                    mainHandler.post(() -> listener.onFinish(true));
+                }
                 return true;
             }
 
@@ -430,6 +510,9 @@ public class SftpHelper implements FtpInterface {
             logHelper.logToFile(android.util.Log.getStackTraceString(e));
             Log.d("SftpHelper", "upload file failed");
             e.printStackTrace();
+            if (listener != null) {
+                mainHandler.post(() -> listener.onFinish(false));
+            }
             return false;
         }
     }

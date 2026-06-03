@@ -680,14 +680,18 @@ public class SyncService extends Service implements DownloadProgressListener {
             int retryCount = 0;
             final int MAX_RETRY = 10;
 
+            // 💡 新增：记录当前已经上传的字节数，初始为 0
+            long uploadedBytes = 0;
+
             while (!uploadSuccess && retryCount < MAX_RETRY) {
                 if (retryCount > 0) {
-                    Log.w(TAG, "准备第 " + retryCount + " 次重试上传: " + localFile.getName());
+                    Log.w(TAG, "准备第 " + retryCount + " 次重试上传: " + localFile.getName() + " (已从 " + uploadedBytes + " 字节处继续)");
                     try { Thread.sleep(10000 * retryCount); } catch (InterruptedException e) {
                         logHelper.logToFile("Failed to sleep for " + 10000 * retryCount);
                         logHelper.logToFile(android.util.Log.getStackTraceString(e));
                     }
 
+                    // 💡 FIX: 重试时重置进度并更新通知显示重试状态
                     this.currentProgress = 0;
                     this.progressText = getString(R.string.reconnecting) + retryCount + "/" + MAX_RETRY;
                     updateNotification(MessageFormat.format(
@@ -716,11 +720,37 @@ public class SyncService extends Service implements DownloadProgressListener {
                     }
                 }
 
-                uploadSuccess = ftpHelper.uploadFile(remoteFilePath, localFile);
-
-                if (!uploadSuccess) {
-                    retryCount++;
+                FtpInterface realHelper = ftpHelper;
+                if (ftpHelper instanceof FtpHelperProxy) {
+                    realHelper = ((FtpHelperProxy) ftpHelper).getActiveHelper();
                 }
+
+                // 💡 使用带进度监听的上传方法，SFTP 支持断点续传
+                if (realHelper instanceof SftpHelper) {
+                    SftpHelper sftpHelper = (SftpHelper) realHelper;
+                    uploadSuccess = sftpHelper.uploadFile(remoteFilePath, localFile, this);
+                } else {
+                    uploadSuccess = ftpHelper.uploadFile(remoteFilePath, localFile, this);
+                }
+
+                if (uploadSuccess) {
+                    break; // 上传成功，跳出循环
+                }
+
+                // 💡 上传失败的处理逻辑 - 检查已上传的字节数用于断点续传
+                try {
+                    long remoteFileSize = ftpHelper.getFileSize(remoteFilePath);
+                    if (remoteFileSize > 0) {
+                        uploadedBytes = remoteFileSize;
+                        Log.d(TAG, "上传中断，远程文件大小: " + uploadedBytes + " bytes");
+                    } else {
+                        uploadedBytes = 0;
+                    }
+                } catch (Exception e) {
+                    uploadedBytes = 0;
+                }
+
+                retryCount++;
             }
 
             if (uploadSuccess) {

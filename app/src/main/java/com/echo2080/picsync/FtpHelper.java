@@ -342,12 +342,22 @@ public class FtpHelper implements FtpInterface {
      * 上传本地文件到 FTP 服务器（支持自动创建目录）
      */
     public boolean uploadFile(String remoteFilePath, File localFile) {
+        return uploadFile(remoteFilePath, localFile, null);
+    }
+
+    /**
+     * 上传本地文件到 FTP 服务器（带进度监听）
+     */
+    public boolean uploadFile(String remoteFilePath, File localFile, DownloadProgressListener listener) {
         if (localFile == null || !localFile.exists()) {
             logHelper.logToFile("Failed to uploadFile " + localFile.getAbsolutePath() + " to " + remoteFilePath);
             logHelper.logToFile("File not existing:" + remoteFilePath);
             Log.d("FtpHelper", "uploadFile not existing:" + localFile.getAbsolutePath());
             return false;
         }
+
+        boolean uploadSuccess = false;
+        final long fileSize = localFile.length();
 
         try {
             String remoteDirPath = remoteFilePath.substring(0, remoteFilePath.lastIndexOf('/'));
@@ -364,7 +374,50 @@ public class FtpHelper implements FtpInterface {
             try (java.io.FileInputStream fis = new java.io.FileInputStream(localFile)) {
                 ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
                 String fileName = remoteFilePath.substring(remoteFilePath.lastIndexOf('/') + 1);
-                return ftpClient.storeFile(fileName, fis);
+
+                // 使用 OutputStream 手动上传以支持进度监听
+                try (java.io.OutputStream outputStream = ftpClient.storeFileStream(fileName)) {
+                    if (outputStream == null) {
+                        logHelper.logToFile("Failed to get output stream for: " + remoteFilePath);
+                        return false;
+                    }
+
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    long totalBytesRead = 0;
+                    long startTime = System.currentTimeMillis();
+                    long lastUpdate = startTime;
+
+                    while (!Thread.currentThread().isInterrupted() && (bytesRead = fis.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, bytesRead);
+                        totalBytesRead += bytesRead;
+
+                        // 每隔 1000 毫秒（1秒）更新一次 UI
+                        long currentTime = System.currentTimeMillis();
+                        if (currentTime - lastUpdate > 1000 && fileSize > 0) {
+                            long timeElapsed = (currentTime - startTime) / 1000;
+                            if (timeElapsed > 0) {
+                                long speedBytesPerSec = totalBytesRead / timeElapsed;
+                                String progressPercent = String.format("%.2f%%", (totalBytesRead * 100.0 / fileSize));
+                                String speed = formatSize(speedBytesPerSec) + "/s";
+                                String statusText = progressPercent + " - " + speed;
+                                int intProgress = (int) ((totalBytesRead * 100L) / fileSize);
+
+                                if (listener != null) {
+                                    mainHandler.post(() -> listener.onProgress(intProgress, statusText));
+                                }
+                            }
+                            lastUpdate = currentTime;
+                        }
+                    }
+
+                    outputStream.flush();
+                    uploadSuccess = ftpClient.completePendingCommand();
+
+                    if (uploadSuccess && listener != null) {
+                        mainHandler.post(() -> listener.onProgress(100, "100.00%"));
+                    }
+                }
             }
 
         } catch (IOException e) {
@@ -372,8 +425,14 @@ public class FtpHelper implements FtpInterface {
             logHelper.logToFile(android.util.Log.getStackTraceString(e));
             Log.d("FtpHelper", "upload file failed");
             e.printStackTrace();
-            return false;
+        } finally {
+            if (listener != null) {
+                final boolean isSuccess = uploadSuccess;
+                mainHandler.post(() -> listener.onFinish(isSuccess));
+            }
         }
+
+        return uploadSuccess;
     }
 
     /**

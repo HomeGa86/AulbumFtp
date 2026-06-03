@@ -148,6 +148,11 @@ public class FtpHelperProxy implements FtpInterface {
     public boolean uploadFile(String remoteFilePath, File localFile) {
         checkActive(); return activeHelper.uploadFile(remoteFilePath, localFile);
     }
+
+    @Override
+    public boolean uploadFile(String remoteFilePath, File localFile, DownloadProgressListener listener) {
+        checkActive(); return activeHelper.uploadFile(remoteFilePath, localFile, listener);
+    }
     @Override
     public long getFileSize(String remoteFilePath) {
         checkActive(); return activeHelper.getFileSize(remoteFilePath);
