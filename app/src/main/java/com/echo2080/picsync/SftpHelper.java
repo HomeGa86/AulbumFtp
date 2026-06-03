@@ -427,7 +427,7 @@ public class SftpHelper implements FtpInterface {
                 return false;
             }
 
-            // 检查远程文件是否已存在，获取已上传的字节数（断点续传）
+            // 检查远程文件是否已存在，获取已上传的字节数（用于进度计算）
             long uploadedBytes = 0;
             try {
                 SftpATTRS attrs = channelSftp.stat(remoteFilePath);
@@ -443,67 +443,61 @@ public class SftpHelper implements FtpInterface {
             final long fileSize = localFile.length();
             final long startOffset = uploadedBytes;
 
-            try (java.io.FileInputStream fis = new java.io.FileInputStream(localFile)) {
-                // 跳过已上传的部分
-                if (startOffset > 0) {
-                    fis.skip(startOffset);
+            // 💡 修复：直接使用文件路径，让 JSch 自动处理断点续传
+            channelSftp.put(localFile.getAbsolutePath(), remoteFilePath, new com.jcraft.jsch.SftpProgressMonitor() {
+                long totalBytesWritten = startOffset;
+                long bytesWrittenThisSession = 0;
+                long lastUpdate = System.currentTimeMillis();
+                long startTime = System.currentTimeMillis();
+
+                @Override
+                public void init(int op, String src, String dest, long max) {
+                    this.totalBytesWritten = startOffset;
+                    this.bytesWrittenThisSession = 0;
+                    this.startTime = System.currentTimeMillis();
+                    this.lastUpdate = System.currentTimeMillis();
                 }
 
-                channelSftp.put(fis, remoteFilePath, new com.jcraft.jsch.SftpProgressMonitor() {
-                    long totalBytesWritten = startOffset;
-                    long bytesWrittenThisSession = 0;
-                    long lastUpdate = System.currentTimeMillis();
-                    long startTime = System.currentTimeMillis();
-
-                    @Override
-                    public void init(int op, String src, String dest, long max) {
-                        this.totalBytesWritten = startOffset;
-                        this.bytesWrittenThisSession = 0;
-                        this.startTime = System.currentTimeMillis();
-                        this.lastUpdate = System.currentTimeMillis();
+                @Override
+                public boolean count(long count) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        return false;
                     }
+                    totalBytesWritten += count;
+                    bytesWrittenThisSession += count;
+                    long currentTime = System.currentTimeMillis();
 
-                    @Override
-                    public boolean count(long count) {
-                        if (Thread.currentThread().isInterrupted()) {
-                            return false;
-                        }
-                        totalBytesWritten += count;
-                        bytesWrittenThisSession += count;
-                        long currentTime = System.currentTimeMillis();
+                    // 每隔 1000 毫秒（1秒）更新一次 UI
+                    if (currentTime - lastUpdate > 1000 && fileSize > 0) {
+                        long timeElapsed = (currentTime - startTime) / 1000;
+                        if (timeElapsed <= 0) timeElapsed = 1;
 
-                        // 每隔 1000 毫秒（1秒）更新一次 UI
-                        if (currentTime - lastUpdate > 1000 && fileSize > 0) {
-                            long timeElapsed = (currentTime - startTime) / 1000;
-                            if (timeElapsed <= 0) timeElapsed = 1;
+                        long speedBytesPerSec = bytesWrittenThisSession / timeElapsed;
+                        String progressPercent = String.format("%.2f%%", (totalBytesWritten * 100.0 / fileSize));
+                        String speed = formatSize(speedBytesPerSec) + "/s";
+                        String statusText = progressPercent + " - " + speed;
+                        int intProgress = (int) ((totalBytesWritten * 100L) / fileSize);
 
-                            long speedBytesPerSec = bytesWrittenThisSession / timeElapsed;
-                            String progressPercent = String.format("%.2f%%", (totalBytesWritten * 100.0 / fileSize));
-                            String speed = formatSize(speedBytesPerSec) + "/s";
-                            String statusText = progressPercent + " - " + speed;
-                            int intProgress = (int) ((totalBytesWritten * 100L) / fileSize);
-
-                            if (listener != null) {
-                                mainHandler.post(() -> listener.onProgress(intProgress, statusText));
-                            }
-                            lastUpdate = currentTime;
-                        }
-                        return true;
-                    }
-
-                    @Override
-                    public void end() {
                         if (listener != null) {
-                            mainHandler.post(() -> listener.onProgress(100, "100.00%"));
+                            mainHandler.post(() -> listener.onProgress(intProgress, statusText));
                         }
+                        lastUpdate = currentTime;
                     }
-                }, ChannelSftp.RESUME);
-
-                if (listener != null) {
-                    mainHandler.post(() -> listener.onFinish(true));
+                    return true;
                 }
-                return true;
+
+                @Override
+                public void end() {
+                    if (listener != null) {
+                        mainHandler.post(() -> listener.onProgress(100, "100.00%"));
+                    }
+                }
+            }, ChannelSftp.RESUME);
+
+            if (listener != null) {
+                mainHandler.post(() -> listener.onFinish(true));
             }
+            return true;
 
         } catch (Exception e) {
             logHelper.logToFile("Failed to uploadFile " + localFile.getAbsolutePath() + " to " + remoteFilePath);
