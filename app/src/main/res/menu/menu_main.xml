@@ -16,6 +16,10 @@
         android:title="@string/delete_local_file" />
 
     <item
+        android:id="@+id/action_delete_server"
+        android:title="@string/delete_server_file" />
+
+    <item
         android:id="@+id/action_view_log"
         android:title="@string/view_log"
     android:icon="@android:drawable/ic_menu_info_details"

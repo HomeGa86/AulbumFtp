@@ -488,4 +488,26 @@ public class SftpHelper implements FtpInterface {
             return -1;
         }
     }
+
+    /**
+     * 删除服务器上的文件
+     */
+    public boolean deleteFile(String remoteFilePath) {
+        try {
+            if (channelSftp == null || !channelSftp.isConnected()) {
+                Log.e("SftpHelper", "SFTP client not connected");
+                return false;
+            }
+            
+            channelSftp.rm(remoteFilePath);
+            Log.d("SftpHelper", "Successfully deleted file: " + remoteFilePath);
+            logHelper.logToFile("Successfully deleted file from server: " + remoteFilePath);
+            return true;
+        } catch (SftpException e) {
+            Log.e("SftpHelper", "Exception while deleting file: " + remoteFilePath);
+            logHelper.logToFile("Exception while deleting file: " + remoteFilePath + "\n" + android.util.Log.getStackTraceString(e));
+            e.printStackTrace();
+            return false;
+        }
+    }
 }

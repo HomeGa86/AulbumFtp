@@ -1,2 +1,11 @@
+pluginManagement {
+    repositories {
+        maven { url 'https://jitpack.io' }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
 rootProject.name = "PicSync"
 include ':app'

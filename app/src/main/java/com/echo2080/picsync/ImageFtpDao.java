@@ -14,4 +14,10 @@ public interface ImageFtpDao {
     // 返回值改为 LiveData<String>，Room 会自动异步查询
     @Query("SELECT ftpPath FROM image_ftp_paths WHERE localUri = :localUri")
     LiveData<String> getFtpPath(String localUri);
+
+    @Query("SELECT localUri FROM image_ftp_paths WHERE ftpPath = :ftpPath")
+    String getLocalUriByFtpPath(String ftpPath);
+
+    @Query("DELETE FROM image_ftp_paths WHERE ftpPath = :ftpPath")
+    void deleteByFtpPath(String ftpPath);
 }

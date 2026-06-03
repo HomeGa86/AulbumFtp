@@ -46,6 +46,10 @@
     <string name="no_log">No log yet</string>
     <string name="saved_to_gallery">{0} saved</string>
     <string name="save_partial_result"> {0} saved, {1} failed</string>
+    <string name="delete_server_file">Delete Server Files</string>
+    <string name="confirm_delete_server_files">Are you sure you want to delete the selected files from the server? This action cannot be undone!</string>
+    <string name="server_files_deleted">{0} files deleted from server</string>
+    <string name="failed_to_delete_server_files">Failed to delete some files from server</string>
 
 
 </resources>

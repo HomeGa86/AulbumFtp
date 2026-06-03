@@ -228,6 +228,10 @@ public class MainActivity extends AppCompatActivity {
             downloadAndSaveSelectedImages();
             return true;
         }
+        else if (id == R.id.action_delete_server) {
+            deleteServerFiles();
+            return true;
+        }
         else if (id == R.id.action_copy_log) {
             LogHelper logHelper = new LogHelper(this);
             String logContent = logHelper.readAllLogFile(this);
@@ -409,6 +413,85 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
             });
         });
+    }
+
+    private void deleteServerFiles() {
+        List<ImageItem> selectedItems = adapter.getSelectedItems();
+        if (selectedItems.isEmpty()) {
+            Toast.makeText(this, R.string.no_file_selected, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.delete_server_file)
+                .setMessage(R.string.confirm_delete_server_files)
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    saveExecutor.execute(() -> {
+                        int successCount = 0;
+                        int failCount = 0;
+
+                        for (ImageItem item : selectedItems) {
+                            if (Thread.currentThread().isInterrupted()) break;
+
+                            String ftpPath = item.getFtpPath();
+                            String localUri = item.getLocalUri();
+                            
+                            if (ftpPath == null || ftpPath.isEmpty()) {
+                                failCount++;
+                                continue;
+                            }
+
+                            FtpInterface ftpHelper = new FtpHelperProxy(this);
+                            try {
+                                if (!ftpHelper.connect(this)) {
+                                    failCount++;
+                                    continue;
+                                }
+
+                                boolean deleted = ftpHelper.deleteFile(ftpPath);
+                                if (deleted) {
+                                    successCount++;
+                                    
+                                    String thumbnailPath = Uri.parse(localUri).getPath();
+                                    if (thumbnailPath != null) {
+                                        File thumbnailFile = new File(thumbnailPath);
+                                        if (thumbnailFile.exists()) {
+                                            thumbnailFile.delete();
+                                        }
+                                    }
+                                    
+                                    database.downloadedFileDao().markAsDeleted(ftpPath);
+                                    database.imageFtpDao().deleteByFtpPath(ftpPath);
+                                } else {
+                                    failCount++;
+                                }
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                failCount++;
+                            } finally {
+                                ftpHelper.disconnect();
+                            }
+                        }
+
+                        final int s = successCount;
+                        final int f = failCount;
+                        runOnUiThread(() -> {
+                            adapter.clearSelection();
+
+                            String msg;
+                            if (f == 0) {
+                                msg = MessageFormat.format(getString(R.string.server_files_deleted), s);
+                            } else {
+                                msg = getString(R.string.failed_to_delete_server_files);
+                            }
+                            Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+
+                            loadImages();
+                        });
+                    });
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
     }
 
     private boolean downloadFromFtp(String remoteFilePath, File localFile, DownloadProgressListener listener) {

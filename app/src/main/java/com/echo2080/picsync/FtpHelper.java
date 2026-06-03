@@ -422,4 +422,31 @@ public class FtpHelper implements FtpInterface {
             return -1;
         }
     }
+
+    /**
+     * 删除服务器上的文件
+     */
+    public boolean deleteFile(String remoteFilePath) {
+        try {
+            if (ftpClient == null || !ftpClient.isConnected()) {
+                Log.e("FtpHelper", "FTP client not connected");
+                return false;
+            }
+            
+            boolean deleted = ftpClient.deleteFile(remoteFilePath);
+            if (deleted) {
+                Log.d("FtpHelper", "Successfully deleted file: " + remoteFilePath);
+                logHelper.logToFile("Successfully deleted file from server: " + remoteFilePath);
+            } else {
+                Log.e("FtpHelper", "Failed to delete file: " + remoteFilePath);
+                logHelper.logToFile("Failed to delete file from server: " + remoteFilePath);
+            }
+            return deleted;
+        } catch (IOException e) {
+            Log.e("FtpHelper", "Exception while deleting file: " + remoteFilePath);
+            logHelper.logToFile("Exception while deleting file: " + remoteFilePath + "\n" + android.util.Log.getStackTraceString(e));
+            e.printStackTrace();
+            return false;
+        }
+    }
 }

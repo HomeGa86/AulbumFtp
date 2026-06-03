@@ -44,4 +44,9 @@ public interface FtpInterface {
     long getFileSize(String remoteFilePath);
 
     boolean downloadFile(String remoteFilePath, File localFile, DownloadProgressListener listener);
-    }
+
+    /**
+     * 删除服务器上的文件
+     */
+    boolean deleteFile(String remoteFilePath);
+}

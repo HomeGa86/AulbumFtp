@@ -46,5 +46,9 @@
     <string name="no_log">还没有日志数据</string>
     <string name="saved_to_gallery">已成功保存 {0} 张图片到相册</string>
     <string name="save_partial_result">保存完成：成功 {0} 张，失败 {1} 张</string>
+    <string name="delete_server_file">删除服务器文件</string>
+    <string name="confirm_delete_server_files">确定要从服务器上删除选中的文件吗？此操作不可撤销！</string>
+    <string name="server_files_deleted">已从服务器删除 {0} 个文件</string>
+    <string name="failed_to_delete_server_files">部分文件从服务器删除失败</string>
 
 </resources>

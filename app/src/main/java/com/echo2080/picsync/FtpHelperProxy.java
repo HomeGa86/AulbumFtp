@@ -153,6 +153,11 @@ public class FtpHelperProxy implements FtpInterface {
         checkActive(); return activeHelper.getFileSize(remoteFilePath);
     }
 
+    @Override
+    public boolean deleteFile(String remoteFilePath) {
+        checkActive(); return activeHelper.deleteFile(remoteFilePath);
+    }
+
     public FtpInterface getActiveHelper() { return activeHelper; }
 
     private void checkActive() {

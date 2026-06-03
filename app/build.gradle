@@ -3,36 +3,37 @@ plugins {
 }
 
 android {
-
-    compileSdkVersion 33
-    buildToolsVersion "33.0.0"
+    namespace 'com.echo2080.picsync'
+    compileSdk 33
 
     defaultConfig {
         applicationId "com.echo2080.picsync"
         minSdkVersion 29
         targetSdkVersion 33
-        versionCode 3
-        versionName "1.3"
+        versionCode 4
+        versionName "1.4"
 
         ndk {
             abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
         }
 
-        splits {
-            abi {
-                enable true
-                reset()
-                include 'armeabi-v7a', 'arm64-v8a'
-                universalApk true
-            }
-        }
 
 
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
-	
-	signingConfigs {
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a'
+            universalApk true
+        }
+    }
+
+
+    signingConfigs {
         debug {
             // Assumes you placed the debug.keystore in your project's root folder
             storeFile file('../debug.keystore')

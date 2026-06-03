@@ -122,7 +122,6 @@ public class FullScreenPagerAdapter extends RecyclerView.Adapter<FullScreenPager
                 Glide.with(context)
                         .load(uriOrPath) // Glide 本身就完美支持 file:/// 开头的字符串
                         .dontTransform()
-                        .error(R.drawable.permissionx_ic_alert)
                         .into(holder.photoView);
             }
 
@@ -150,7 +149,6 @@ public class FullScreenPagerAdapter extends RecyclerView.Adapter<FullScreenPager
             Glide.with(context)
                     .load(uriOrPath)
                     .dontTransform()
-                    .error(R.drawable.permissionx_ic_alert)
                     .into(holder.photoView);
         }
     }
