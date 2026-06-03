@@ -137,6 +137,7 @@ public class MainActivity extends AppCompatActivity {
         String oldBackupHost = prefs.getString("backup_ftp_host", "");
         Integer oldBackupPort = Integer.parseInt(prefs.getString("backup_ftp_port", "21").isEmpty() ? "21" : prefs.getString("backup_ftp_port", "21"));
         Boolean isBackupSftp = prefs.getBoolean("backup_is_sftp", false);
+        Boolean enableUpload = prefs.getBoolean("enable_upload", false);
 
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_ftp_config, null);
         final EditText etHost = dialogView.findViewById(R.id.et_ftp_host);
@@ -148,6 +149,7 @@ public class MainActivity extends AppCompatActivity {
         final EditText etBackupHost = dialogView.findViewById(R.id.et_backup_ftp_host);
         final EditText etBackupPort = dialogView.findViewById(R.id.et_backup_ftp_port);
         final CheckBox cbBackupIsSftp = dialogView.findViewById(R.id.cb_backup_is_sftp);
+        final CheckBox cbEnableUpload = dialogView.findViewById(R.id.cb_enable_upload);
 
         etHost.setText(oldHost != null ? oldHost : "");
         etPort.setText(oldPort != null ? oldPort.toString() : "21");
@@ -159,6 +161,7 @@ public class MainActivity extends AppCompatActivity {
         etBackupHost.setText(oldBackupHost != null ? oldBackupHost : "");
         etBackupPort.setText(oldBackupPort != null ? oldBackupPort.toString() : "21");
         cbBackupIsSftp.setChecked(isBackupSftp != null ? isBackupSftp : false);
+        cbEnableUpload.setChecked(enableUpload != null ? enableUpload : false);
 
         new AlertDialog.Builder(this)
                 .setTitle(R.string.ftp_set)
@@ -176,6 +179,7 @@ public class MainActivity extends AppCompatActivity {
                     editor.putString("backup_ftp_host", etBackupHost.getText().toString().trim());
                     editor.putString("backup_ftp_port", etBackupPort.getText().toString().trim());
                     editor.putBoolean("backup_is_sftp", cbBackupIsSftp.isChecked());
+                    editor.putBoolean("enable_upload", cbEnableUpload.isChecked());
                     editor.apply();
 
                     Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show();

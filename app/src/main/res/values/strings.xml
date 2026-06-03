@@ -50,6 +50,17 @@
     <string name="confirm_delete_server_files">Are you sure you want to delete the selected files from the server? This action cannot be undone!</string>
     <string name="server_files_deleted">{0} files deleted from server</string>
     <string name="failed_to_delete_server_files">Failed to delete some files from server</string>
+    <string name="enable_upload">Enable Upload to Server</string>
+    <string name="uploading">Uploading {0}/{1}:{2}</string>
+    <string name="x_files_to_upload">{0} files to upload</string>
+    <string name="upload_complete">{0} files uploaded</string>
+    <string name="upload_part_done">Upload partially done. {0} succeeded, {1} failed</string>
+    <string name="no_need_upload">No new files to upload</string>
+    <string name="upload_notification_name">Media Uploading Progress</string>
+    <string name="delete_server_file">Delete Server Files</string>
+    <string name="confirm_delete_server_files">Are you sure you want to delete the selected files from the server? This action cannot be undone!</string>
+    <string name="server_files_deleted">{0} files deleted from server</string>
+    <string name="failed_to_delete_server_files">Failed to delete some files from server</string>
 
 
 </resources>

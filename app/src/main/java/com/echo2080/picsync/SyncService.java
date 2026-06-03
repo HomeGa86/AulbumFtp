@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaMetadataRetriever;
@@ -18,6 +19,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -41,6 +43,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import android.database.Cursor;
+import android.provider.MediaStore;
 
 public class SyncService extends Service implements DownloadProgressListener {
 
@@ -50,6 +54,7 @@ public class SyncService extends Service implements DownloadProgressListener {
 
     private static final String PREFS_NAME = "AppSettings";
     private static final String KEY_LAST_FULL_SYNC_TIME = "last_full_sync_time";
+    private static final String KEY_LAST_UPLOAD_TIME = "last_upload_time";
     private static final long FULL_SYNC_INTERVAL_MS = 10 * 24 * 60 * 60 * 1000L;
     private LogHelper logHelper;
 
@@ -109,6 +114,13 @@ public class SyncService extends Service implements DownloadProgressListener {
         executor.execute(() -> {
             try {
                 syncAllFiles(); // ⬅️ 内部改为通用的多媒体同步
+                
+                // 下载完成后，检查是否需要上传
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                boolean enableUpload = prefs.getBoolean("enable_upload", false);
+                if (enableUpload) {
+                    uploadLocalFiles();
+                }
             } finally {
                 isRunning.set(false);
                 stopForeground(STOP_FOREGROUND_REMOVE);
@@ -599,6 +611,250 @@ public class SyncService extends Service implements DownloadProgressListener {
 
         System.out.println("数据清洗完成，共更新了 " + updateCount + " 条记录。");
         notifyUI("数据清洗完成，共更新了 " + updateCount + " 条记录。");
+    }
+
+    /**
+     * 上传本地相册文件到服务器
+     */
+    private void uploadLocalFiles() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        
+        updateNotification(getString(R.string.connecting));
+        notifyUI(getString(R.string.connecting));
+
+        if (!ftpHelper.connect(this)) {
+            Log.e(TAG, "FTP 连接失败");
+            updateNotification(getString(R.string.failed_to_connect));
+            notifyUI(getString(R.string.failed_to_connect));
+            return;
+        }
+
+        // 获取当月目录名，例如 202606
+        SimpleDateFormat monthFormat = new SimpleDateFormat("yyyyMM", Locale.US);
+        String monthDir = monthFormat.format(new Date());
+        
+        SharedPreferences appPrefs = this.getSharedPreferences("AppSettings", MODE_PRIVATE);
+        String basePath = appPrefs.getString("ftp_base_path", "/");
+        if (!basePath.endsWith("/")) {
+            basePath += "/";
+        }
+        String uploadDir = basePath + "upload/" + monthDir + "/";
+
+        // 扫描本地相册文件
+        List<File> localFiles = scanLocalMediaFiles();
+        if (localFiles.isEmpty()) {
+            updateNotification(getString(R.string.no_need_upload));
+            notifyUI(getString(R.string.no_need_upload));
+            ftpHelper.disconnect();
+            return;
+        }
+
+        Log.d(TAG, "找到 " + localFiles.size() + " 个本地文件待上传");
+        logHelper.logToFile("Found " + localFiles.size() + " local files to upload");
+
+        updateNotification(MessageFormat.format(getString(R.string.x_files_to_upload), localFiles.size()));
+        notifyUI(MessageFormat.format(getString(R.string.x_files_to_upload), localFiles.size()));
+
+        int total = localFiles.size();
+        int successCount = 0;
+        int failedCount = 0;
+
+        this.totalFiles = total;
+        updateHandler.postDelayed(updateNotificationRunnable, UPDATE_INTERVAL);
+
+        for (int i = 0; i < localFiles.size(); i++) {
+            File localFile = localFiles.get(i);
+            this.currentFileIndex = i + 1;
+            this.currentFileName = localFile.getName();
+            this.currentProgress = 0;
+            this.progressText = "";
+
+            updateNotification(MessageFormat.format(getString(R.string.uploading), currentFileIndex, total, currentFileName));
+            notifyUI(MessageFormat.format(getString(R.string.uploading), currentFileIndex, total, currentFileName));
+
+            // 生成远程文件路径（处理同名文件）
+            String remoteFileName = getUniqueRemoteFileName(uploadDir, localFile.getName());
+            String remoteFilePath = uploadDir + remoteFileName;
+
+            boolean uploadSuccess = false;
+            int retryCount = 0;
+            final int MAX_RETRY = 10;
+
+            while (!uploadSuccess && retryCount < MAX_RETRY) {
+                if (retryCount > 0) {
+                    Log.w(TAG, "准备第 " + retryCount + " 次重试上传: " + localFile.getName());
+                    try { Thread.sleep(10000 * retryCount); } catch (InterruptedException e) {
+                        logHelper.logToFile("Failed to sleep for " + 10000 * retryCount);
+                        logHelper.logToFile(android.util.Log.getStackTraceString(e));
+                    }
+
+                    this.currentProgress = 0;
+                    this.progressText = getString(R.string.reconnecting) + retryCount + "/" + MAX_RETRY;
+                    updateNotification(MessageFormat.format(
+                            getString(R.string.uploading),
+                            currentFileIndex, total, currentFileName + " (" + this.progressText + ")"
+                    ));
+                    notifyUI(MessageFormat.format(
+                            getString(R.string.uploading),
+                            currentFileIndex, total, currentFileName + " (" + this.progressText + ")"
+                    ));
+
+                    boolean reconnectSuccess = ftpHelper.reconnect(this);
+                    if (reconnectSuccess) {
+                        try { Thread.sleep(1000); } catch (InterruptedException e) {
+                            logHelper.logToFile("Failed to sleep for 1000");
+                            logHelper.logToFile(android.util.Log.getStackTraceString(e));
+                        }
+                        retryCount = 0;
+                        logHelper.logToFile(getString(R.string.reconnected) + ":" + remoteFilePath);
+                        updateNotification(getString(R.string.reconnected));
+                        notifyUI(getString(R.string.reconnected));
+                    } else {
+                        retryCount++;
+                        logHelper.logToFile("Failed to reconnect:" + remoteFilePath);
+                        continue;
+                    }
+                }
+
+                uploadSuccess = ftpHelper.uploadFile(remoteFilePath, localFile);
+
+                if (!uploadSuccess) {
+                    retryCount++;
+                }
+            }
+
+            if (uploadSuccess) {
+                successCount++;
+                Log.d(TAG, "成功上传: " + localFile.getName() + " -> " + remoteFilePath);
+                logHelper.logToFile("Successfully uploaded: " + localFile.getAbsolutePath() + " -> " + remoteFilePath);
+            } else {
+                failedCount++;
+                Log.e(TAG, "上传失败: " + localFile.getName());
+                logHelper.logToFile("Failed to upload: " + localFile.getAbsolutePath());
+            }
+        }
+
+        ftpHelper.disconnect();
+        updateHandler.removeCallbacks(updateNotificationRunnable);
+
+        if (failedCount == 0) {
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.putLong(KEY_LAST_UPLOAD_TIME, System.currentTimeMillis());
+            editor.apply();
+            updateNotification(MessageFormat.format(getString(R.string.upload_complete), successCount));
+            notifyUI(MessageFormat.format(getString(R.string.upload_complete), successCount));
+        } else {
+            updateNotification(MessageFormat.format(getString(R.string.upload_part_done), successCount, failedCount));
+            notifyUI(MessageFormat.format(getString(R.string.upload_part_done), successCount, failedCount));
+        }
+
+        Log.d(TAG, "上传完成: 成功 " + successCount + ", 失败 " + failedCount);
+    }
+
+    /**
+     * 扫描本地相册中的图片和视频文件
+     */
+    private List<File> scanLocalMediaFiles() {
+        List<File> mediaFiles = new ArrayList<>();
+        
+        // 使用 MediaStore 扫描图片
+        Uri imagesUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+        String[] imageProjection = new String[]{
+                MediaStore.Images.Media.DATA,
+                MediaStore.Images.Media.DISPLAY_NAME
+        };
+        
+        try (Cursor imageCursor = getContentResolver().query(
+                imagesUri, imageProjection, null, null, null)) {
+            if (imageCursor != null) {
+                int dataColumnIndex = imageCursor.getColumnIndex(MediaStore.Images.Media.DATA);
+                while (imageCursor.moveToNext()) {
+                    String filePath = imageCursor.getString(dataColumnIndex);
+                    if (filePath != null) {
+                        File file = new File(filePath);
+                        if (file.exists()) {
+                            mediaFiles.add(file);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "扫描图片失败", e);
+            logHelper.logToFile("Failed to scan images: " + e.getMessage());
+        }
+        
+        // 使用 MediaStore 扫描视频
+        Uri videosUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+        String[] videoProjection = new String[]{
+                MediaStore.Video.Media.DATA,
+                MediaStore.Video.Media.DISPLAY_NAME
+        };
+        
+        try (Cursor videoCursor = getContentResolver().query(
+                videosUri, videoProjection, null, null, null)) {
+            if (videoCursor != null) {
+                int dataColumnIndex = videoCursor.getColumnIndex(MediaStore.Video.Media.DATA);
+                while (videoCursor.moveToNext()) {
+                    String filePath = videoCursor.getString(dataColumnIndex);
+                    if (filePath != null) {
+                        File file = new File(filePath);
+                        if (file.exists()) {
+                            mediaFiles.add(file);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "扫描视频失败", e);
+            logHelper.logToFile("Failed to scan videos: " + e.getMessage());
+        }
+        
+        Log.d(TAG, "总共找到 " + mediaFiles.size() + " 个本地媒体文件");
+        return mediaFiles;
+    }
+
+    /**
+     * 获取唯一的远程文件名（处理同名冲突）
+     */
+    private String getUniqueRemoteFileName(String remoteDir, String fileName) {
+        String nameWithoutExt = fileName;
+        String extension = "";
+        
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex > 0) {
+            nameWithoutExt = fileName.substring(0, dotIndex);
+            extension = fileName.substring(dotIndex);
+        }
+
+        // 检查文件是否存在
+        String testPath = remoteDir + fileName;
+        long fileSize = ftpHelper.getFileSize(testPath);
+        
+        if (fileSize < 0) {
+            // 文件不存在，可以直接使用
+            return fileName;
+        }
+
+        // 文件存在，尝试添加后缀 _1, _2, ...
+        int counter = 1;
+        while (true) {
+            String newName = nameWithoutExt + "_" + counter + extension;
+            String newPath = remoteDir + newName;
+            long newSize = ftpHelper.getFileSize(newPath);
+            
+            if (newSize < 0) {
+                // 找到了不存在的文件名
+                return newName;
+            }
+            
+            counter++;
+            
+            // 防止无限循环
+            if (counter > 1000) {
+                Log.e(TAG, "无法找到可用的文件名: " + fileName);
+                return nameWithoutExt + "_" + System.currentTimeMillis() + extension;
+            }
+        }
     }
 
 
