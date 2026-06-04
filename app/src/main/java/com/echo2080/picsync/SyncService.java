@@ -9,9 +9,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.Build;
@@ -22,16 +19,12 @@ import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.FileWriter;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
@@ -43,8 +36,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-import android.database.Cursor;
-import android.provider.MediaStore;
 
 public class SyncService extends Service implements DownloadProgressListener {
 
@@ -114,7 +105,7 @@ public class SyncService extends Service implements DownloadProgressListener {
         executor.execute(() -> {
             try {
                 isRunning.set(true);
-                syncAllFiles(); // ⬅️ 内部改为通用的多媒体同步
+                downloadAllFiles(); // ⬅️ 内部改为通用的多媒体同步
 
                 // 下载完成后，检查是否需要上传
                 SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -132,7 +123,7 @@ public class SyncService extends Service implements DownloadProgressListener {
     }
 
 
-    private void syncAllFiles() {
+    private void downloadAllFiles() {
 
 
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -548,12 +539,14 @@ public class SyncService extends Service implements DownloadProgressListener {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        Log.d(TAG, "onDestroy called"); 
+        
         isRunning.set(false);
         
         // 💡 中断正在执行的任务
         if (executor != null && !executor.isShutdown()) {
             executor.shutdownNow();
-            Log.d(TAG, "Service destroyed, executor shutdown initiated");
+            Log.d(TAG, "Executor shutdown initiated");
         }
         
         // 💡 移除所有通知更新回调
@@ -564,8 +557,20 @@ public class SyncService extends Service implements DownloadProgressListener {
             ftpHelper.disconnect();
         }
         
-        stopForeground(STOP_FOREGROUND_REMOVE);
-        Log.d(TAG, "Service destroyed and foreground removed");
+        // 💡 确保移除前台服务和通知
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+            Log.d(TAG, "stopForeground called with REMOVE flag");
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping foreground", e);
+        }
+        
+        // 💡 显式取消通知（作为双重保险）
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.cancel(NOTIFICATION_ID);
+            Log.d(TAG, "Notification explicitly cancelled");
+        }
     }
 
     public interface OnDataUpdateListener {
