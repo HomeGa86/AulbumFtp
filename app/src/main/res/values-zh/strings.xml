@@ -6,6 +6,7 @@
     <string name="sync_complete">同步完成</string>
     <string name="sync_begin">同步中</string>
     <string name="save">保存</string>
+    <string name="confirm">确认</string>
     <string name="ftp_set">配置FTP/SFTP服务器信息</string>
     <string name="cancel">取消</string>
     <string name="no_need_sync">{0}天后再下载</string>
@@ -46,5 +47,18 @@
     <string name="no_log">还没有日志数据</string>
     <string name="saved_to_gallery">已成功保存 {0} 张图片到相册</string>
     <string name="save_partial_result">保存完成：成功 {0} 张，失败 {1} 张</string>
+    <string name="delete_server_file">删除服务器文件</string>
+    <string name="confirm_delete_server_files">确定要从服务器上删除选中的文件吗？此操作不可撤销！</string>
+    <string name="server_files_deleted">已从服务器删除 {0} 个文件</string>
+    <string name="failed_to_delete_server_files">部分文件从服务器删除失败</string>
+    <string name="enable_upload">开启上传到服务器</string>
+    <string name="uploading">正在上传{0}/{1}:{2}</string>
+    <string name="x_files_to_upload">{0}个文件待上传</string>
+    <string name="upload_complete">{0}个文件上传成功</string>
+    <string name="upload_part_done">部分上传成功。{0}成功，{1}失败</string>
+    <string name="no_need_upload">没有新文件需要上传</string>
+    <string name="upload_notification_name">图片/视频上传进度</string>
+    <string name="permission_granted">权限已授予，可以正常上传相册文件</string>
+    <string name="permission_required">需要存储权限才能上传相册文件</string>
 
 </resources>

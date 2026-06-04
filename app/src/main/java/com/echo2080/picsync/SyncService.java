@@ -647,9 +647,9 @@ public class SyncService extends Service implements DownloadProgressListener {
      */
     private void uploadLocalFiles() {
 
-
+        
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-
+        
         updateNotification(getString(R.string.connecting));
         notifyUI(getString(R.string.connecting));
 
@@ -660,6 +660,11 @@ public class SyncService extends Service implements DownloadProgressListener {
 
             return;
         }
+
+        // 💡 从数据库加载已上传的文件名列表（仅文件名，不含路径）
+        List<String> uploadedFileNames = database.uploadedFileDao().getAllUploadedFileNames();
+        Log.d(TAG, "已上传文件数量: " + uploadedFileNames.size());
+        logHelper.logToFile("Loaded " + uploadedFileNames.size() + " uploaded file names from database");
 
         // 获取当月目录名，例如 202606_phoneID
         SimpleDateFormat monthFormat = new SimpleDateFormat("yyyyMM", Locale.US);
@@ -692,6 +697,7 @@ public class SyncService extends Service implements DownloadProgressListener {
         int total = localFiles.size();
         int successCount = 0;
         int failedCount = 0;
+        int skippedCount = 0; // 💡 新增：记录跳过的文件数
 
         this.totalFiles = total;
         updateHandler.postDelayed(updateNotificationRunnable, UPDATE_INTERVAL);
@@ -707,16 +713,49 @@ public class SyncService extends Service implements DownloadProgressListener {
             }
             
             File localFile = localFiles.get(i);
+            String fileName = localFile.getName(); // 💡 只获取文件名
+            
             this.currentFileIndex = i + 1;
-            this.currentFileName = localFile.getName();
+            this.currentFileName = fileName;
             this.currentProgress = 0;
             this.progressText = "";
 
             updateNotification(MessageFormat.format(getString(R.string.uploading), currentFileIndex, total, currentFileName));
             notifyUI(MessageFormat.format(getString(R.string.uploading), currentFileIndex, total, currentFileName));
 
-            // 💡 检查服务器上是否已存在同名文件
-            String remoteFilePath = uploadDir + localFile.getName();
+            // 💡 检查该文件名是否已经上传过（基于文件名比较）
+            if (uploadedFileNames.contains(fileName)) {
+                Log.d(TAG, "文件已上传过，跳过: " + fileName);
+                logHelper.logToFile("File already uploaded, skip: " + fileName);
+                skippedCount++;
+                successCount++;
+                continue;
+            }
+
+            // 💡 检查服务器上是否已存在同名文件，并比较大小
+            String remoteFilePath = uploadDir + fileName;
+            long remoteFileSize = ftpHelper.getFileSize(remoteFilePath);
+            long localFileSize = localFile.length();
+
+            if (remoteFileSize >= 0) {
+                // 文件已存在，比较大小
+                if (remoteFileSize == localFileSize) {
+                    // 大小相同，判定为完整上传过，跳过
+                    Log.d(TAG, "服务器文件与本地大小一致，跳过上传: " + fileName + " (大小: " + remoteFileSize + " bytes)");
+                    logHelper.logToFile("Skip upload, file size matches on server: " + fileName + " (size: " + remoteFileSize + " bytes)");
+                    
+                    // 💡 记录到数据库，避免下次重复检查
+                    database.uploadedFileDao().insert(new UploadedFileEntity(fileName, System.currentTimeMillis()));
+                    uploadedFileNames.add(fileName);
+                    
+                    successCount++;
+                    continue;
+                } else {
+                    // 大小不同，说明上次可能上传中断或文件被修改，需要重新上传
+                    Log.w(TAG, "服务器文件与本地大小不一致，将重新上传: " + fileName + " (远程: " + remoteFileSize + " bytes, 本地: " + localFileSize + " bytes)");
+                    logHelper.logToFile("File size mismatch, will re-upload: " + fileName + " (remote: " + remoteFileSize + ", local: " + localFileSize + ")");
+                }
+            }
 
             boolean uploadSuccess = false;
             int retryCount = 0;
@@ -736,7 +775,7 @@ public class SyncService extends Service implements DownloadProgressListener {
                 }
                 
                 if (retryCount > 0) {
-                    Log.w(TAG, "准备第 " + retryCount + " 次重试上传: " + localFile.getName() + " (已从 " + uploadedBytes + " 字节处继续)");
+                    Log.w(TAG, "准备第 " + retryCount + " 次重试上传: " + fileName + " (已从 " + uploadedBytes + " 字节处继续)");
                     try {
                         Thread.sleep(10000 * retryCount);
                     } catch (InterruptedException e) {
@@ -814,11 +853,15 @@ public class SyncService extends Service implements DownloadProgressListener {
 
             if (uploadSuccess) {
                 successCount++;
-                Log.d(TAG, "成功上传: " + localFile.getName() + " -> " + remoteFilePath);
+                Log.d(TAG, "成功上传: " + fileName + " -> " + remoteFilePath);
                 logHelper.logToFile("Successfully uploaded: " + localFile.getAbsolutePath() + " -> " + remoteFilePath);
+                
+                // 💡 上传成功后，仅记录文件名到数据库
+                database.uploadedFileDao().insert(new UploadedFileEntity(fileName, System.currentTimeMillis()));
+                uploadedFileNames.add(fileName);
             } else {
                 failedCount++;
-                Log.e(TAG, "上传失败: " + localFile.getName());
+                Log.e(TAG, "上传失败: " + fileName);
                 logHelper.logToFile("Failed to upload: " + localFile.getAbsolutePath());
             }
         }
@@ -831,14 +874,18 @@ public class SyncService extends Service implements DownloadProgressListener {
             SharedPreferences.Editor editor = prefs.edit();
             editor.putLong(KEY_LAST_UPLOAD_TIME, System.currentTimeMillis());
             editor.apply();
-            updateNotification(MessageFormat.format(getString(R.string.upload_complete), successCount));
-            notifyUI(MessageFormat.format(getString(R.string.upload_complete), successCount));
+            String msg = MessageFormat.format(getString(R.string.upload_complete), successCount) 
+                    + (skippedCount > 0 ? " (" + skippedCount + " skipped)" : "");
+            updateNotification(msg);
+            notifyUI(msg);
         } else {
-            updateNotification(MessageFormat.format(getString(R.string.upload_part_done), successCount, failedCount));
-            notifyUI(MessageFormat.format(getString(R.string.upload_part_done), successCount, failedCount));
+            String msg = MessageFormat.format(getString(R.string.upload_part_done), successCount, failedCount)
+                    + (skippedCount > 0 ? " (" + skippedCount + " skipped)" : "");
+            updateNotification(msg);
+            notifyUI(msg);
         }
 
-        Log.d(TAG, "上传完成: 成功 " + successCount + ", 失败 " + failedCount);
+        Log.d(TAG, "上传完成: 成功 " + successCount + ", 失败 " + failedCount + ", 跳过 " + skippedCount);
     }
 
     /**
