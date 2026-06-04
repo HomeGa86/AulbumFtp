@@ -429,7 +429,7 @@ public class MainActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
                 .setTitle(R.string.delete_server_file)
                 .setMessage(R.string.confirm_delete_server_files)
-                .setPositiveButton(R.string.save, (dialog, which) -> {
+                .setPositiveButton(R.string.confirm, (dialog, which) -> {
                     saveExecutor.execute(() -> {
                         int successCount = 0;
                         int failCount = 0;
@@ -541,6 +541,39 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkAndRequestPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Android 13+ (API 33+)
+            String[] permissions = {
+                android.Manifest.permission.READ_MEDIA_IMAGES,
+                android.Manifest.permission.READ_MEDIA_VIDEO,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            };
+            
+            boolean hasAllPermissions = true;
+            for (String permission : permissions) {
+                if (checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    hasAllPermissions = false;
+                    break;
+                }
+            }
+            
+            if (!hasAllPermissions) {
+                requestPermissions(permissions, PERMISSION_REQUEST_CODE);
+                return;
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Android 10-12 (API 29-32)
+            if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) 
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                    new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE},
+                    PERMISSION_REQUEST_CODE
+                );
+                return;
+            }
+        }
+        
+        // 权限已授予，继续执行
         loadImages();
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         boolean isFirstRun = prefs.getBoolean(KEY_IS_FIRST_RUN, true);
@@ -548,6 +581,36 @@ public class MainActivity extends AppCompatActivity {
             showFtpConfigDialog(prefs);
         } else {
             startSyncServiceWithDelay();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                          @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            boolean allGranted = true;
+            for (int result : grantResults) {
+                if (result != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            
+            if (allGranted) {
+                Toast.makeText(this, R.string.permission_granted, Toast.LENGTH_SHORT).show();
+                loadImages();
+                SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                boolean isFirstRun = prefs.getBoolean(KEY_IS_FIRST_RUN, true);
+                if (isFirstRun) {
+                    showFtpConfigDialog(prefs);
+                } else {
+                    startSyncServiceWithDelay();
+                }
+            } else {
+                Toast.makeText(this, R.string.permission_required, Toast.LENGTH_LONG).show();
+            }
         }
     }
 

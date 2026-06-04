@@ -569,13 +569,24 @@ public class ThumbnailHelper {
 
     // ---------------------------------------------------------
     // 优先方案: 针对 mmexport 格式特殊处理
-    // 格式: mmexport<32位hex>_<13位时间戳>
+    // 格式: mmexport<32位hex>_<13位时间戳> 或 mmexport<13位时间戳>
     // ---------------------------------------------------------
     if (nameWithoutExt.startsWith("mmexport")) {
-        int lastUnderscore = nameWithoutExt.lastIndexOf('_');
-        if (lastUnderscore > 0 && lastUnderscore < nameWithoutExt.length() - 1) {
-            String tsStr = nameWithoutExt.substring(lastUnderscore + 1);
+        String afterPrefix = nameWithoutExt.substring("mmexport".length());
+        
+        // 先尝试查找下划线分隔的时间戳
+        int lastUnderscore = afterPrefix.lastIndexOf('_');
+        if (lastUnderscore > 0 && lastUnderscore < afterPrefix.length() - 1) {
+            String tsStr = afterPrefix.substring(lastUnderscore + 1);
             Long ts = parseAndValidateTimestamp(tsStr);
+            if (ts != 0) return ts;
+        }
+        
+        // 如果没有下划线，尝试直接从剩余部分提取时间戳
+        // 例如: mmexport1730948290240 -> 1730948290240
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{10,13})").matcher(afterPrefix);
+        if (m.find()) {
+            Long ts = parseAndValidateTimestamp(m.group(1));
             if (ts != 0) return ts;
         }
     }

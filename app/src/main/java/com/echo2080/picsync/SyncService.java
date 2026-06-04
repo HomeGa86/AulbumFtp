@@ -113,8 +113,9 @@ public class SyncService extends Service implements DownloadProgressListener {
 
         executor.execute(() -> {
             try {
+                isRunning.set(true);
                 syncAllFiles(); // ⬅️ 内部改为通用的多媒体同步
-                
+
                 // 下载完成后，检查是否需要上传
                 SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
                 boolean enableUpload = prefs.getBoolean("enable_upload", false);
@@ -132,7 +133,6 @@ public class SyncService extends Service implements DownloadProgressListener {
 
 
     private void syncAllFiles() {
-        isRunning.set(true);
 
 
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -152,7 +152,7 @@ public class SyncService extends Service implements DownloadProgressListener {
             String msg = MessageFormat.format(getString(R.string.no_need_sync), String.valueOf(daysRemaining));
             updateNotification(MessageFormat.format(getString(R.string.no_need_sync), String.valueOf(daysRemaining)));
             notifyUI(msg);
-            isRunning.set(false);
+
             return;
         }
 
@@ -163,7 +163,7 @@ public class SyncService extends Service implements DownloadProgressListener {
             Log.e(TAG, "FTP 连接失败");
             updateNotification(getString(R.string.failed_to_connect));
             notifyUI(getString(R.string.failed_to_connect));
-            isRunning.set(false);
+
             return;
         }
 
@@ -186,9 +186,7 @@ public class SyncService extends Service implements DownloadProgressListener {
             allRemoteFiles.addAll(cachedFilesList);
             logHelper.logToFile("Load file list from local database, no need to get list from server");
             Log.d(TAG, "命中缓存：从本地数据库加载了 " + allRemoteFiles.size() + " 个服务器文件路径。");
-        }
-        else
-        {
+        } else {
             try {
                 ftpHelper.listAllFiles(basePath, allRemoteFiles);
                 List<ServerFileEntity> entities = new ArrayList<>();
@@ -199,7 +197,7 @@ public class SyncService extends Service implements DownloadProgressListener {
             } catch (Exception exception) {
                 updateNotification(getString(R.string.failed_to_load_list));
                 notifyUI(getString(R.string.failed_to_load_list));
-                isRunning.set(false);
+
                 return;
             }
         }
@@ -231,6 +229,15 @@ public class SyncService extends Service implements DownloadProgressListener {
         updateHandler.postDelayed(updateNotificationRunnable, UPDATE_INTERVAL);
 
         for (String remotePath : newFiles) {
+            // 💡 检查线程是否被中断，如果是则立即退出
+            if (Thread.currentThread().isInterrupted() || !isRunning.get()) {
+                Log.d(TAG, "下载任务被中断，停止下载");
+                logHelper.logToFile("Download task interrupted, stopping download");
+                ftpHelper.disconnect();
+                updateHandler.removeCallbacks(updateNotificationRunnable);
+                return;
+            }
+            
             current++;
             String fileName = remotePath.substring(remotePath.lastIndexOf("/") + 1);
             this.currentFileIndex = current; // 从1开始计数
@@ -254,11 +261,26 @@ public class SyncService extends Service implements DownloadProgressListener {
             long downloadedBytes = 0;
 
             while (!downloadSuccess && retryCount < MAX_RETRY) {
+                // 💡 在每次重试前检查线程是否被中断
+                if (Thread.currentThread().isInterrupted() || !isRunning.get()) {
+                    Log.d(TAG, "下载任务在重试时被中断");
+                    logHelper.logToFile("Download task interrupted during retry");
+                    ftpHelper.disconnect();
+                    updateHandler.removeCallbacks(updateNotificationRunnable);
+                    return;
+                }
+                
                 if (retryCount > 0) {
                     Log.w(TAG, "准备第 " + retryCount + " 次重试下载: " + fileName + " (已从 " + downloadedBytes + " 字节处继续)");
-                    try { Thread.sleep(10000 * retryCount); } catch (InterruptedException e) {
-                        logHelper.logToFile("Failed to sleep for" + 10000 * retryCount);
-                        logHelper.logToFile(android.util.Log.getStackTraceString(e));
+                    try {
+                        Thread.sleep(10000 * retryCount);
+                    } catch (InterruptedException e) {
+                        // 💡 FIX: 捕获到中断异常时，恢复中断状态并退出
+                        Thread.currentThread().interrupt();
+                        logHelper.logToFile("Download sleep interrupted, stopping download");
+                        ftpHelper.disconnect();
+                        updateHandler.removeCallbacks(updateNotificationRunnable);
+                        return;
                     }
 
                     // 💡 FIX: 重试时重置进度并更新通知显示重试状态
@@ -273,23 +295,21 @@ public class SyncService extends Service implements DownloadProgressListener {
                             current, total, fileName + " (" + this.progressText + ")"
                     ));
 
-
                     boolean reconnectSuccess = ftpHelper.reconnect(this);
-                    if(reconnectSuccess)
-                    {
+                    if (reconnectSuccess) {
                         //After reconnected, sleep for a while to wait the connection to be stable
-                        try { Thread.sleep(1000); } catch (InterruptedException e) {
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
                             logHelper.logToFile("Failed to sleep for" + 1000);
                             logHelper.logToFile(android.util.Log.getStackTraceString(e));
                         }
-                        retryCount=0;
+                        retryCount = 0;
                         logHelper.logToFile(getString(R.string.reconnected) + ":" + remotePath);
                         updateNotification(getString(R.string.reconnected));
                         notifyUI(getString(R.string.reconnected));
 
-                    }
-                    else
-                    {
+                    } else {
                         retryCount++;
                         logHelper.logToFile("Failed to reconnect:" + remotePath);
                         continue;
@@ -356,21 +376,21 @@ public class SyncService extends Service implements DownloadProgressListener {
             String thumbnailPath = null;
 
             if (fileType == FileType.VIDEO) {
-                thumbnailPath = ThumbnailHelper.createAndSaveThumbnailForVideo(tempFile, thumbnailFile, logHelper,this);
-                if(thumbnailPath != null){
+                thumbnailPath = ThumbnailHelper.createAndSaveThumbnailForVideo(tempFile, thumbnailFile, logHelper, this);
+                if (thumbnailPath != null) {
                     parseSuccess = true;
                     captureTime = ThumbnailHelper.getVideoCaptureTime(tempFile.getAbsolutePath(), fileName);
-                    }
+                }
 
             } else {
-                    thumbnailPath = ThumbnailHelper.createAndSaveThumbnail(tempFile, thumbnailFile, logHelper);
-                    if (thumbnailPath != null) {
-                        parseSuccess = true;
-                        ThumbnailHelper.ExifInfo exifInfo = ThumbnailHelper.copyExifInfo(tempFile, thumbnailFile);
-                        if (exifInfo != null && exifInfo.captureTime > 0) {
-                            captureTime = exifInfo.captureTime;
-                        }
+                thumbnailPath = ThumbnailHelper.createAndSaveThumbnail(tempFile, thumbnailFile, logHelper);
+                if (thumbnailPath != null) {
+                    parseSuccess = true;
+                    ThumbnailHelper.ExifInfo exifInfo = ThumbnailHelper.copyExifInfo(tempFile, thumbnailFile);
+                    if (exifInfo != null && exifInfo.captureTime > 0) {
+                        captureTime = exifInfo.captureTime;
                     }
+                }
             }
 
             // 校验解析与缩略图是否生成成功
@@ -379,8 +399,7 @@ public class SyncService extends Service implements DownloadProgressListener {
                 logHelper.logToFile("Failed to generate thumbnail, parseSuccess is false or thumbnailPath is null:" + tempFile.getAbsolutePath());
                 tempFile.delete(); // 清理残留空间
                 failedToProcessCount++;
-                if(fileType == FileType.VIDEO)
-                {
+                if (fileType == FileType.VIDEO) {
                     //Ignore this file in the future, don't download it again
                     database.downloadedFileDao().insert(
                             new DownloadedFileEntity(remotePath, "", System.currentTimeMillis(), captureTime, fileType)
@@ -424,14 +443,13 @@ public class SyncService extends Service implements DownloadProgressListener {
 
         ftpHelper.disconnect();
         updateHandler.removeCallbacks(updateNotificationRunnable);
-        isRunning.set(false);
+
 
         if (successCount > 0) {
             Intent intent = new Intent("com.echo2080.picsync.REFRESH_IMAGES");
             LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         }
     }
-
 
 
     // 辅助工具方法：根据后缀名映射到文件类型枚举
@@ -527,15 +545,27 @@ public class SyncService extends Service implements DownloadProgressListener {
     }
 
 
-
     @Override
     public void onDestroy() {
         super.onDestroy();
         isRunning.set(false);
-        stopForeground(STOP_FOREGROUND_REMOVE);
+        
+        // 💡 中断正在执行的任务
         if (executor != null && !executor.isShutdown()) {
-            executor.shutdown();
+            executor.shutdownNow();
+            Log.d(TAG, "Service destroyed, executor shutdown initiated");
         }
+        
+        // 💡 移除所有通知更新回调
+        updateHandler.removeCallbacks(updateNotificationRunnable);
+        
+        // 💡 断开 FTP 连接
+        if (ftpHelper != null) {
+            ftpHelper.disconnect();
+        }
+        
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        Log.d(TAG, "Service destroyed and foreground removed");
     }
 
     public interface OnDataUpdateListener {
@@ -565,8 +595,7 @@ public class SyncService extends Service implements DownloadProgressListener {
         dataListeners.remove(listener);
     }
 
-    public void notifyUI(String msg)
-    {
+    public void notifyUI(String msg) {
         for (OnDataUpdateListener listener : dataListeners) {
             if (listener != null) {
                 listener.onDataUpdated(msg);
@@ -617,8 +646,10 @@ public class SyncService extends Service implements DownloadProgressListener {
      * 上传本地相册文件到服务器
      */
     private void uploadLocalFiles() {
+
+
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        
+
         updateNotification(getString(R.string.connecting));
         notifyUI(getString(R.string.connecting));
 
@@ -626,19 +657,21 @@ public class SyncService extends Service implements DownloadProgressListener {
             Log.e(TAG, "FTP 连接失败");
             updateNotification(getString(R.string.failed_to_connect));
             notifyUI(getString(R.string.failed_to_connect));
+
             return;
         }
 
-        // 获取当月目录名，例如 202606
+        // 获取当月目录名，例如 202606_phoneID
         SimpleDateFormat monthFormat = new SimpleDateFormat("yyyyMM", Locale.US);
         String monthDir = monthFormat.format(new Date());
-        
+        String deviceId = getDeviceId();
+
         SharedPreferences appPrefs = this.getSharedPreferences("AppSettings", MODE_PRIVATE);
         String basePath = appPrefs.getString("ftp_base_path", "/");
         if (!basePath.endsWith("/")) {
             basePath += "/";
         }
-        String uploadDir = basePath + "upload/" + monthDir + "/";
+        String uploadDir = basePath + "upload/" + monthDir + "_" + deviceId + "/";
 
         // 扫描本地相册文件
         List<File> localFiles = scanLocalMediaFiles();
@@ -646,6 +679,7 @@ public class SyncService extends Service implements DownloadProgressListener {
             updateNotification(getString(R.string.no_need_upload));
             notifyUI(getString(R.string.no_need_upload));
             ftpHelper.disconnect();
+
             return;
         }
 
@@ -663,6 +697,15 @@ public class SyncService extends Service implements DownloadProgressListener {
         updateHandler.postDelayed(updateNotificationRunnable, UPDATE_INTERVAL);
 
         for (int i = 0; i < localFiles.size(); i++) {
+            // 💡 检查线程是否被中断，如果是则立即退出
+            if (Thread.currentThread().isInterrupted() || !isRunning.get()) {
+                Log.d(TAG, "上传任务被中断，停止上传");
+                logHelper.logToFile("Upload task interrupted, stopping upload");
+                ftpHelper.disconnect();
+                updateHandler.removeCallbacks(updateNotificationRunnable);
+                return;
+            }
+            
             File localFile = localFiles.get(i);
             this.currentFileIndex = i + 1;
             this.currentFileName = localFile.getName();
@@ -672,9 +715,8 @@ public class SyncService extends Service implements DownloadProgressListener {
             updateNotification(MessageFormat.format(getString(R.string.uploading), currentFileIndex, total, currentFileName));
             notifyUI(MessageFormat.format(getString(R.string.uploading), currentFileIndex, total, currentFileName));
 
-            // 生成远程文件路径（处理同名文件）
-            String remoteFileName = getUniqueRemoteFileName(uploadDir, localFile.getName());
-            String remoteFilePath = uploadDir + remoteFileName;
+            // 💡 检查服务器上是否已存在同名文件
+            String remoteFilePath = uploadDir + localFile.getName();
 
             boolean uploadSuccess = false;
             int retryCount = 0;
@@ -684,11 +726,26 @@ public class SyncService extends Service implements DownloadProgressListener {
             long uploadedBytes = 0;
 
             while (!uploadSuccess && retryCount < MAX_RETRY) {
+                // 💡 在每次重试前检查线程是否被中断
+                if (Thread.currentThread().isInterrupted() || !isRunning.get()) {
+                    Log.d(TAG, "上传任务在重试时被中断");
+                    logHelper.logToFile("Upload task interrupted during retry");
+                    ftpHelper.disconnect();
+                    updateHandler.removeCallbacks(updateNotificationRunnable);
+                    return;
+                }
+                
                 if (retryCount > 0) {
                     Log.w(TAG, "准备第 " + retryCount + " 次重试上传: " + localFile.getName() + " (已从 " + uploadedBytes + " 字节处继续)");
-                    try { Thread.sleep(10000 * retryCount); } catch (InterruptedException e) {
-                        logHelper.logToFile("Failed to sleep for " + 10000 * retryCount);
-                        logHelper.logToFile(android.util.Log.getStackTraceString(e));
+                    try {
+                        Thread.sleep(10000 * retryCount);
+                    } catch (InterruptedException e) {
+                        // 💡 FIX: 捕获到中断异常时，恢复中断状态并退出
+                        Thread.currentThread().interrupt();
+                        logHelper.logToFile("Upload sleep interrupted, stopping upload");
+                        ftpHelper.disconnect();
+                        updateHandler.removeCallbacks(updateNotificationRunnable);
+                        return;
                     }
 
                     // 💡 FIX: 重试时重置进度并更新通知显示重试状态
@@ -705,7 +762,9 @@ public class SyncService extends Service implements DownloadProgressListener {
 
                     boolean reconnectSuccess = ftpHelper.reconnect(this);
                     if (reconnectSuccess) {
-                        try { Thread.sleep(1000); } catch (InterruptedException e) {
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
                             logHelper.logToFile("Failed to sleep for 1000");
                             logHelper.logToFile(android.util.Log.getStackTraceString(e));
                         }
@@ -739,9 +798,9 @@ public class SyncService extends Service implements DownloadProgressListener {
 
                 // 💡 上传失败的处理逻辑 - 检查已上传的字节数用于断点续传
                 try {
-                    long remoteFileSize = ftpHelper.getFileSize(remoteFilePath);
-                    if (remoteFileSize > 0) {
-                        uploadedBytes = remoteFileSize;
+                    long newRemoteFileSize = ftpHelper.getFileSize(remoteFilePath);
+                    if (newRemoteFileSize > 0) {
+                        uploadedBytes = newRemoteFileSize;
                         Log.d(TAG, "上传中断，远程文件大小: " + uploadedBytes + " bytes");
                     } else {
                         uploadedBytes = 0;
@@ -767,6 +826,7 @@ public class SyncService extends Service implements DownloadProgressListener {
         ftpHelper.disconnect();
         updateHandler.removeCallbacks(updateNotificationRunnable);
 
+
         if (failedCount == 0) {
             SharedPreferences.Editor editor = prefs.edit();
             editor.putLong(KEY_LAST_UPLOAD_TIME, System.currentTimeMillis());
@@ -786,108 +846,107 @@ public class SyncService extends Service implements DownloadProgressListener {
      */
     private List<File> scanLocalMediaFiles() {
         List<File> mediaFiles = new ArrayList<>();
-        
+
         // 使用 MediaStore 扫描图片
         Uri imagesUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
         String[] imageProjection = new String[]{
                 MediaStore.Images.Media.DATA,
                 MediaStore.Images.Media.DISPLAY_NAME
         };
-        
+
         try (Cursor imageCursor = getContentResolver().query(
                 imagesUri, imageProjection, null, null, null)) {
             if (imageCursor != null) {
                 int dataColumnIndex = imageCursor.getColumnIndex(MediaStore.Images.Media.DATA);
+                int count = 0;
                 while (imageCursor.moveToNext()) {
                     String filePath = imageCursor.getString(dataColumnIndex);
                     if (filePath != null) {
                         File file = new File(filePath);
                         if (file.exists()) {
                             mediaFiles.add(file);
+                            count++;
                         }
                     }
                 }
+                Log.d(TAG, "扫描到 " + count + " 个图片文件");
+                logHelper.logToFile("Scanned " + count + " image files from MediaStore");
+            } else {
+                Log.w(TAG, "图片查询返回 null，可能没有权限");
+                logHelper.logToFile("Image query returned null, possibly no permission");
             }
         } catch (Exception e) {
             Log.e(TAG, "扫描图片失败", e);
             logHelper.logToFile("Failed to scan images: " + e.getMessage());
         }
-        
+
         // 使用 MediaStore 扫描视频
         Uri videosUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
         String[] videoProjection = new String[]{
                 MediaStore.Video.Media.DATA,
                 MediaStore.Video.Media.DISPLAY_NAME
         };
-        
+
         try (Cursor videoCursor = getContentResolver().query(
                 videosUri, videoProjection, null, null, null)) {
             if (videoCursor != null) {
                 int dataColumnIndex = videoCursor.getColumnIndex(MediaStore.Video.Media.DATA);
+                int count = 0;
                 while (videoCursor.moveToNext()) {
                     String filePath = videoCursor.getString(dataColumnIndex);
                     if (filePath != null) {
                         File file = new File(filePath);
                         if (file.exists()) {
                             mediaFiles.add(file);
+                            count++;
                         }
                     }
                 }
+                Log.d(TAG, "扫描到 " + count + " 个视频文件");
+                logHelper.logToFile("Scanned " + count + " video files from MediaStore");
+            } else {
+                Log.w(TAG, "视频查询返回 null，可能没有权限");
+                logHelper.logToFile("Video query returned null, possibly no permission");
             }
         } catch (Exception e) {
             Log.e(TAG, "扫描视频失败", e);
             logHelper.logToFile("Failed to scan videos: " + e.getMessage());
         }
-        
+
         Log.d(TAG, "总共找到 " + mediaFiles.size() + " 个本地媒体文件");
+        logHelper.logToFile("Total local media files found: " + mediaFiles.size());
         return mediaFiles;
     }
 
+
     /**
-     * 获取唯一的远程文件名（处理同名冲突）
+     * 获取设备唯一标识符（用于多设备上传时区分文件夹）
+     *
+     * @return 设备ID的后8位字符（保护隐私同时保证唯一性）
      */
-    private String getUniqueRemoteFileName(String remoteDir, String fileName) {
-        String nameWithoutExt = fileName;
-        String extension = "";
-        
-        int dotIndex = fileName.lastIndexOf('.');
-        if (dotIndex > 0) {
-            nameWithoutExt = fileName.substring(0, dotIndex);
-            extension = fileName.substring(dotIndex);
+    private String getDeviceId() {
+        try {
+            String androidId = android.provider.Settings.Secure.getString(
+                    getContentResolver(),
+                    android.provider.Settings.Secure.ANDROID_ID
+            );
+
+            if (androidId != null && !androidId.isEmpty()) {
+                // 取后8位作为设备标识，既保证唯一性又保护隐私
+                return androidId.length() > 8
+                        ? androidId.substring(androidId.length() - 8).toUpperCase()
+                        : androidId.toUpperCase();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "获取设备ID失败", e);
+            logHelper.logToFile("Failed to get device ID: " + e.getMessage());
         }
 
-        // 检查文件是否存在
-        String testPath = remoteDir + fileName;
-        long fileSize = ftpHelper.getFileSize(testPath);
-        
-        if (fileSize < 0) {
-            // 文件不存在，可以直接使用
-            return fileName;
-        }
-
-        // 文件存在，尝试添加后缀 _1, _2, ...
-        int counter = 1;
-        while (true) {
-            String newName = nameWithoutExt + "_" + counter + extension;
-            String newPath = remoteDir + newName;
-            long newSize = ftpHelper.getFileSize(newPath);
-            
-            if (newSize < 0) {
-                // 找到了不存在的文件名
-                return newName;
-            }
-            
-            counter++;
-            
-            // 防止无限循环
-            if (counter > 1000) {
-                Log.e(TAG, "无法找到可用的文件名: " + fileName);
-                return nameWithoutExt + "_" + System.currentTimeMillis() + extension;
-            }
-        }
+        // 如果获取失败，使用时间戳的最后8位作为备用方案
+        return String.valueOf(System.currentTimeMillis()).substring(5).toUpperCase();
     }
-
-
 }
+
+
 
 

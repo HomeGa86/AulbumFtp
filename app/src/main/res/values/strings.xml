@@ -6,6 +6,7 @@
     <string name="sync_complete">Sync Complete</string>
     <string name="sync_begin">Downloading</string>
     <string name="save">Save</string>
+    <string name="confirm">Confirm</string>
     <string name="ftp_set">FTP/SFTP Server Setting</string>
     <string name="cancel">Cancel</string>
     <string name="no_need_sync">Sync again in {0} days</string>
@@ -57,6 +58,8 @@
     <string name="upload_part_done">Upload partially done. {0} succeeded, {1} failed</string>
     <string name="no_need_upload">No new files to upload</string>
     <string name="upload_notification_name">Media Uploading Progress</string>
+    <string name="permission_granted">Permission granted, can now upload album files</string>
+    <string name="permission_required">Storage permission is required to upload album files</string>
 
 
 </resources>

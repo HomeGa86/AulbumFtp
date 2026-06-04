@@ -6,6 +6,7 @@
     <string name="sync_complete">同步完成</string>
     <string name="sync_begin">同步中</string>
     <string name="save">保存</string>
+    <string name="confirm">确认</string>
     <string name="ftp_set">配置FTP/SFTP服务器信息</string>
     <string name="cancel">取消</string>
     <string name="no_need_sync">{0}天后再下载</string>
@@ -57,5 +58,7 @@
     <string name="upload_part_done">部分上传成功。{0}成功，{1}失败</string>
     <string name="no_need_upload">没有新文件需要上传</string>
     <string name="upload_notification_name">图片/视频上传进度</string>
+    <string name="permission_granted">权限已授予，可以正常上传相册文件</string>
+    <string name="permission_required">需要存储权限才能上传相册文件</string>
 
 </resources>
