@@ -5,7 +5,7 @@ An Android app that lets you view photos and videos hosted on your own FTP or SF
 
 ​Why did I create this app?
 
-I have over 200GB of photos and videos stored on my computer's hard drives. Accessing them from a computer isn't always convenient. While similar apps exist, most require heavy server setups that consume a lot of electricity and money. By using an FTP/SFTP server, you can host your files on lightweight devices like an Android TV box. A small device like this only draws about 5W–10W (5\text{V} at 1\text{A} or 2\text{A}), which is drastically more energy-efficient than a 100W–200W computer running 24/7.
+I have over 200GB of photos and videos stored on my computer's hard drives. Accessing them from a computer isn't always convenient. While similar apps exist, most require heavy server setups that consume a lot of electricity and money. By using an FTP/SFTP server, you can host your files on lightweight devices like an Android TV box. A small device like this only draws about 5W–10W (5V at 1A or 2A), which is drastically more energy-efficient than a 100W–200W computer running 24/7.
 
 ​Key Features:
 ​Privacy & Security First: The app does not require access to your phone’s local photo storage or folders. It operates entirely within its own isolated app folder, keeping your personal data safe and secure.
