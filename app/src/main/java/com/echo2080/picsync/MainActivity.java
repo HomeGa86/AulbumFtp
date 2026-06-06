@@ -698,7 +698,8 @@ public class MainActivity extends AppCompatActivity {
                 String name = file.getName().toLowerCase();
                 // ⬅️ 修改：除了图片，还将缩略图文件夹内可能由于后缀名生成的视频相关缩略图纳入
                 if (name.endsWith(".jpg") || name.endsWith(".jpeg") ||
-                        name.endsWith(".png") || name.endsWith(".webp")) {
+                        name.endsWith(".png") || name.endsWith(".webp") ||
+                        name.endsWith(".heic") || name.endsWith(".heif")) {
                     fileList.add(file);
                 }
             }
@@ -882,6 +883,8 @@ public class MainActivity extends AppCompatActivity {
         if (lower.endsWith(".gif"))  return "image/gif";
         if (lower.endsWith(".bmp"))  return "image/bmp";
         if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".heic")) return "image/heic";
+        if (lower.endsWith(".heif")) return "image/heif";
         if (lower.endsWith(".mp4"))  return "video/mp4";
         if (lower.endsWith(".mkv"))  return "video/x-matroska";
         if (lower.endsWith(".mov"))  return "video/quicktime";

@@ -219,7 +219,7 @@ public class FtpHelper implements FtpInterface {
                 // 如果是符合条件的文件，直接加入最终的结果列表
                 String name = file.getName().toLowerCase();
                 if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
-                        || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp")
+                        || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp") || name.endsWith(".heic") || name.endsWith(".heif")
                         || name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".mov")
                         || name.endsWith(".avi") || name.endsWith(".3gp") || name.endsWith(".hevc") || name.endsWith(".h265")) {
                     fileList.add(fullPath);
