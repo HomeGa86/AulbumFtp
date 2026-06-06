@@ -447,7 +447,7 @@ public class SyncService extends Service implements DownloadProgressListener {
     private FileType getFileTypeByExtension(String fileName) {
         if (fileName == null) return FileType.OTHER;
         String lowerName = fileName.toLowerCase();
-        if (lowerName.endsWith(".mp4") || lowerName.endsWith(".mkv") || lowerName.endsWith(".mov") || lowerName.endsWith(".avi") || lowerName.endsWith(".3gp")) {
+        if (lowerName.endsWith(".mp4") || lowerName.endsWith(".mkv") || lowerName.endsWith(".mov") || lowerName.endsWith(".avi") || lowerName.endsWith(".3gp") || lowerName.endsWith(".hevc") || lowerName.endsWith(".h265")) {
             return FileType.VIDEO;
         } else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || lowerName.endsWith(".png") || lowerName.endsWith(".webp") || lowerName.endsWith(".gif")) {
             return FileType.PICTURE;

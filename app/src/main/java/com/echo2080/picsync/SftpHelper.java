@@ -209,7 +209,7 @@ public class SftpHelper implements FtpInterface {
                 if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
                         || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp")
                         || name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".mov")
-                        || name.endsWith(".avi") || name.endsWith(".3gp")) {
+                        || name.endsWith(".avi") || name.endsWith(".3gp") || name.endsWith(".hevc") || name.endsWith(".h265")) {
                     fileList.add(fullPath); // 符合条件的文件加入结果集
                 }
             }

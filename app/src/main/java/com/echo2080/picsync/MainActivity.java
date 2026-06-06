@@ -887,6 +887,8 @@ public class MainActivity extends AppCompatActivity {
         if (lower.endsWith(".mov"))  return "video/quicktime";
         if (lower.endsWith(".avi"))  return "video/x-msvideo";
         if (lower.endsWith(".3gp"))  return "video/3gpp";
+        if (lower.endsWith(".hevc")) return "video/hevc";
+        if (lower.endsWith(".h265")) return "video/hevc";
         return "application/octet-stream";
     }
 
@@ -895,7 +897,7 @@ public class MainActivity extends AppCompatActivity {
         String lower = fileName.toLowerCase();
         return lower.endsWith(".mp4") || lower.endsWith(".mkv")
                 || lower.endsWith(".mov") || lower.endsWith(".avi")
-                || lower.endsWith(".3gp");
+                || lower.endsWith(".3gp") || lower.endsWith(".hevc") || lower.endsWith(".h265");
     }
 
 
