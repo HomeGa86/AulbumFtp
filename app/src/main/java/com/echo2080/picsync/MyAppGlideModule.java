@@ -14,6 +14,7 @@ import com.bumptech.glide.load.engine.bitmap_recycle.LruBitmapPool;
 import com.bumptech.glide.load.engine.cache.InternalCacheDiskCacheFactory;
 import com.bumptech.glide.load.engine.cache.LruResourceCache;
 import com.bumptech.glide.module.AppGlideModule;
+import com.bumptech.glide.request.RequestOptions;
 
 @GlideModule
 public class MyAppGlideModule extends AppGlideModule {
@@ -34,8 +35,10 @@ public class MyAppGlideModule extends AppGlideModule {
         int bitmapPoolSizeBytes = 1024 * 1024 * 10; // 10MB
         builder.setBitmapPool(new LruBitmapPool(bitmapPoolSizeBytes));
 
-        // 设置默认解码格式为高质量
-        builder.setDefaultDecodeFormat(DecodeFormat.PREFER_ARGB_8888);
+        // 设置默认解码格式为高质量（Glide 4.x 新 API）
+        RequestOptions defaultOptions = new RequestOptions()
+                .format(DecodeFormat.PREFER_ARGB_8888);
+        builder.setDefaultRequestOptions(defaultOptions);
 
         Log.d(TAG, "Glide configuration applied");
     }
