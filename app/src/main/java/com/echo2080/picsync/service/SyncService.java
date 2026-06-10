@@ -39,10 +39,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -169,7 +166,7 @@ public class SyncService extends Service implements DownloadProgressListener {
             return;
         }
 
-        List<String> downloadedPaths = database.downloadedFileDao().getAllDownloadedPaths();
+        List<String> downloadedPaths = new ArrayList<>(database.downloadedFileDao().getAllDownloadedPaths());
         logHelper.logToFile("downloadedPaths:" + String.valueOf(downloadedPaths == null ? 0 : downloadedPaths.size()));
 
         SharedPreferences appPrefs = this.getSharedPreferences("AppSettings", MODE_PRIVATE);

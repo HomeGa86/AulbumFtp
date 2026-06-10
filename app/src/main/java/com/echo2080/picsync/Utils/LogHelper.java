@@ -14,7 +14,7 @@ import java.util.Locale;
 
 public class LogHelper {
 
-    private static final long MAX_LOG_SIZE = 1024 * 1024; // 2MB
+    private static final long MAX_LOG_SIZE = 1024 * 1024;
     private final Context context;
     // 💡 新增：用于同步的锁对象
     private static final Object lock = new Object();
