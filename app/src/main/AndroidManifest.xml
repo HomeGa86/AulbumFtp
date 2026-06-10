@@ -29,13 +29,13 @@
 
         <!-- SyncService 配置 -->
         <service
-            android:name=".SyncService"
+            android:name=".service.SyncService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
         <!-- 开机启动广播 -->
         <receiver
-            android:name=".BootReceiver"
+            android:name=".receiver.BootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
@@ -43,7 +43,7 @@
         </receiver>
 
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -51,7 +51,7 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".FullScreenActivity" android:theme="@style/Theme.AppCompat.NoActionBar" />
+        <activity android:name=".ui.FullScreenActivity" android:theme="@style/Theme.AppCompat.NoActionBar" />
 
     </application>
 </manifest>
