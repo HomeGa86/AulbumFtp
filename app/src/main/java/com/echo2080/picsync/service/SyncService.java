@@ -22,8 +22,14 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import com.echo2080.picsync.Database.*;
+import com.echo2080.picsync.Database.dao.ServerFileDao;
+import com.echo2080.picsync.Database.entity.DownloadedFileEntity;
+import com.echo2080.picsync.Database.entity.ImageFtpEntity;
+import com.echo2080.picsync.Database.entity.ServerFileEntity;
+import com.echo2080.picsync.Database.entity.UploadedFileEntity;
 import com.echo2080.picsync.Utils.*;
 import com.echo2080.picsync.R;
+import com.echo2080.picsync.model.FileSuffixNames;
 import com.echo2080.picsync.model.FileType;
 import com.echo2080.picsync.ui.MainActivity;
 
@@ -450,15 +456,24 @@ public class SyncService extends Service implements DownloadProgressListener {
 
     // 辅助工具方法：根据后缀名映射到文件类型枚举
     private FileType getFileTypeByExtension(String fileName) {
-        if (fileName == null) return FileType.OTHER;
-        String lowerName = fileName.toLowerCase();
-        if (lowerName.endsWith(".mp4") || lowerName.endsWith(".mkv") || lowerName.endsWith(".mov") || lowerName.endsWith(".avi") || lowerName.endsWith(".3gp") || lowerName.endsWith(".hevc") || lowerName.endsWith(".h265")) {
+        if (fileName == null) {
+            return FileType.OTHER;
+        }
+
+        // 优先判断视频
+        if (FileSuffixNames.isVideo(fileName)) {
             return FileType.VIDEO;
-        } else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || lowerName.endsWith(".png") || lowerName.endsWith(".webp") || lowerName.endsWith(".gif") || lowerName.endsWith(".heic") || lowerName.endsWith(".heif")) {
+        }
+
+        // 其次判断图片
+        if (FileSuffixNames.isImage(fileName)) {
             return FileType.PICTURE;
         }
+
+        // 都不匹配则返回 OTHER
         return FileType.OTHER;
     }
+
 
     // 提取的日志记录辅助方法
     private void logFailure(File logFile, String remotePath, String reason) {

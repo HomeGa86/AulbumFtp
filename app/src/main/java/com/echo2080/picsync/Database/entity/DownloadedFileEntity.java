@@ -1,4 +1,4 @@
-package com.echo2080.picsync.Database;
+package com.echo2080.picsync.Database.entity;
 
 import androidx.annotation.NonNull;
 import androidx.room.ColumnInfo;

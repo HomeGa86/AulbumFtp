@@ -41,11 +41,12 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.echo2080.picsync.Database.AppDatabase;
-import com.echo2080.picsync.Database.DownloadedFileEntity;
+import com.echo2080.picsync.Database.entity.DownloadedFileEntity;
 import com.echo2080.picsync.R;
 import com.echo2080.picsync.Utils.FtpHelperProxy;
 import com.echo2080.picsync.Utils.FtpInterface;
 import com.echo2080.picsync.Utils.LogHelper;
+import com.echo2080.picsync.model.FileSuffixNames;
 import com.echo2080.picsync.model.FileType;
 import com.echo2080.picsync.model.ImageItem;
 import com.echo2080.picsync.service.DownloadProgressListener;
@@ -699,23 +700,23 @@ public class MainActivity extends AppCompatActivity {
 
     private void listFilesRecursively(File dir, List<File> fileList) {
         if (dir == null || !dir.exists()) return;
+
         File[] files = dir.listFiles();
         if (files == null) return;
 
         for (File file : files) {
             if (file.isDirectory()) {
+                // 递归遍历子目录
                 listFilesRecursively(file, fileList);
             } else if (file.isFile()) {
-                String name = file.getName().toLowerCase();
-                // ⬅️ 修改：除了图片，还将缩略图文件夹内可能由于后缀名生成的视频相关缩略图纳入
-                if (name.endsWith(".jpg") || name.endsWith(".jpeg") ||
-                        name.endsWith(".png") || name.endsWith(".webp") ||
-                        name.endsWith(".heic") || name.endsWith(".heif")) {
+                String fileName = file.getName();
+                if (FileSuffixNames.isImage(fileName)) {
                     fileList.add(file);
                 }
             }
         }
     }
+
 
     private void clearOriginalImageCache() {
         File cacheDir = new File(getCacheDir(), "full_images");
@@ -888,7 +889,10 @@ public class MainActivity extends AppCompatActivity {
 
     private String getMimeType(String fileName) {
         if (fileName == null) return "application/octet-stream";
+
         String lower = fileName.toLowerCase();
+
+        // 图片类型
         if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
         if (lower.endsWith(".png"))  return "image/png";
         if (lower.endsWith(".gif"))  return "image/gif";
@@ -896,6 +900,8 @@ public class MainActivity extends AppCompatActivity {
         if (lower.endsWith(".webp")) return "image/webp";
         if (lower.endsWith(".heic")) return "image/heic";
         if (lower.endsWith(".heif")) return "image/heif";
+
+        // 视频类型
         if (lower.endsWith(".mp4"))  return "video/mp4";
         if (lower.endsWith(".mkv"))  return "video/x-matroska";
         if (lower.endsWith(".mov"))  return "video/quicktime";
@@ -903,19 +909,16 @@ public class MainActivity extends AppCompatActivity {
         if (lower.endsWith(".3gp"))  return "video/3gpp";
         if (lower.endsWith(".hevc")) return "video/hevc";
         if (lower.endsWith(".h265")) return "video/hevc";
+
+        // ⬅️ 新增的视频类型
+        if (lower.endsWith(".webm")) return "video/webm";
+        if (lower.endsWith(".flv"))  return "video/x-flv";
+        if (lower.endsWith(".wmv"))  return "video/x-ms-wmv";
+        if (lower.endsWith(".mpeg") || lower.endsWith(".mpg")) return "video/mpeg";
+        if (lower.endsWith(".ts"))   return "video/mp2t";
+
+        // 默认返回二进制流
         return "application/octet-stream";
     }
-
-    private boolean isVideoFile(String fileName) {
-        if (fileName == null) return false;
-        String lower = fileName.toLowerCase();
-        return lower.endsWith(".mp4") || lower.endsWith(".mkv")
-                || lower.endsWith(".mov") || lower.endsWith(".avi")
-                || lower.endsWith(".3gp") || lower.endsWith(".hevc") || lower.endsWith(".h265");
-    }
-
-
-
-
 
 }

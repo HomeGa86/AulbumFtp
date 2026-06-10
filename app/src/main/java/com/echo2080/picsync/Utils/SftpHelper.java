@@ -5,6 +5,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import com.echo2080.picsync.model.FileSuffixNames;
 import com.echo2080.picsync.service.DownloadProgressListener;
 import com.jcraft.jsch.Channel;
 import com.jcraft.jsch.ChannelSftp;
@@ -198,19 +199,17 @@ public class SftpHelper implements FtpInterface {
 
             if (entry.getAttrs().isDir()) {
                 if (!entry.getFilename().startsWith(".")) {
-                    dirQueue.add(fullPath); // 子目录加入队列尾部等待处理
+                    dirQueue.add(fullPath);
                 }
             } else {
-                String name = entry.getFilename().toLowerCase();
-                if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
-                        || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp") || name.endsWith(".heic") || name.endsWith(".heif")
-                        || name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".mov")
-                        || name.endsWith(".avi") || name.endsWith(".3gp") || name.endsWith(".hevc") || name.endsWith(".h265")) {
-                    fileList.add(fullPath); // 符合条件的文件加入结果集
+                // 直接调用公共类进行判断
+                if (FileSuffixNames.isSupportedFile(entry.getFilename())) {
+                    fileList.add(fullPath);
                 }
             }
         }
     }
+
 
     /**
      * 下载文件（无进度监听的基础版本）

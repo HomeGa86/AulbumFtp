@@ -5,6 +5,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import com.echo2080.picsync.model.FileSuffixNames;
 import com.echo2080.picsync.service.DownloadProgressListener;
 import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
@@ -209,23 +210,17 @@ public class FtpHelper implements FtpInterface {
             String fullPath = remotePath.endsWith("/") ? remotePath + file.getName() : remotePath + "/" + file.getName();
 
             if (file.isDirectory()) {
-                // 如果是目录且不是隐藏目录，直接丢进队列尾部，等待以后处理
                 if (!file.getName().startsWith(".")) {
                     dirQueue.add(fullPath);
                 }
             } else if (file.isFile()) {
-                // 如果是符合条件的文件，直接加入最终的结果列表
-                String name = file.getName().toLowerCase();
-                if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
-                        || name.endsWith(".gif") || name.endsWith(".bmp") || name.endsWith(".webp") || name.endsWith(".heic") || name.endsWith(".heif")
-                        || name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".mov")
-                        || name.endsWith(".avi") || name.endsWith(".3gp") || name.endsWith(".hevc") || name.endsWith(".h265")) {
+                // 直接调用公共类进行判断
+                if (FileSuffixNames.isSupportedFile(file.getName())) {
                     fileList.add(fullPath);
                 }
             }
         }
     }
-
 
     /**
      * 下载文件（无进度监听的基础版本）

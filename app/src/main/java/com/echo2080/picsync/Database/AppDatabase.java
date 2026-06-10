@@ -9,7 +9,14 @@ import androidx.room.RoomDatabase;
 import androidx.room.TypeConverters;
 import androidx.room.migration.Migration;
 import androidx.sqlite.db.SupportSQLiteDatabase;
-import com.echo2080.picsync.Database.Converters;
+import com.echo2080.picsync.Database.dao.DownloadedFileDao;
+import com.echo2080.picsync.Database.dao.ImageFtpDao;
+import com.echo2080.picsync.Database.dao.ServerFileDao;
+import com.echo2080.picsync.Database.dao.UploadedFileDao;
+import com.echo2080.picsync.Database.entity.DownloadedFileEntity;
+import com.echo2080.picsync.Database.entity.ImageFtpEntity;
+import com.echo2080.picsync.Database.entity.ServerFileEntity;
+import com.echo2080.picsync.Database.entity.UploadedFileEntity;
 
 @Database(
         entities = {
