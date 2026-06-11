@@ -14,7 +14,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.viewpager2.widget.ViewPager2;
 import com.echo2080.picsync.R;
 import com.echo2080.picsync.Utils.FtpHelperProxy;
-import com.echo2080.picsync.Utils.FtpInterface;
 import com.echo2080.picsync.service.DownloadProgressListener;
 import com.echo2080.picsync.ui.adapter.FullScreenPagerAdapter;
 import com.echo2080.picsync.ui.adapter.ImageAdapter;
@@ -39,6 +38,10 @@ public class FullScreenActivity extends AppCompatActivity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     // ✅ 追踪所有进行中的下载任务
     private final Map<Integer, Future<?>> downloadTasks = new ConcurrentHashMap<>();
+
+    // 💡 共享 FTP 连接，整个 Activity 生命周期内复用同一个连接
+    private FtpHelperProxy sharedFtpHelper;
+    private final Object ftpLock = new Object(); // 同步锁，防止并发下载互相干扰
 
     // ✅ 预加载窗口半径：只保留当前页 ±1 的下载，超出范围的自动取消
     private static final int PRELOAD_WINDOW = 1;
@@ -118,8 +121,9 @@ public class FullScreenActivity extends AppCompatActivity {
         String ftpPath = ImageAdapter.LoadedImageFtpUrisWhenClick.get(position);
         if (ftpPath == null || ftpPath.isEmpty()) return;
 
-        String fileName = ftpPath.substring(ftpPath.lastIndexOf("/") + 1);
-        File targetFile = new File(cacheDir, fileName);
+        // 💡 使用 ftpPath 的目录结构保存，避免不同目录下同名文件冲突
+        String relativePath = ftpPath.startsWith("/") ? ftpPath.substring(1) : ftpPath;
+        File targetFile = new File(cacheDir, relativePath);
 
         // 文件已缓存，直接更新UI
         if (targetFile.exists()) {
@@ -163,6 +167,12 @@ public class FullScreenActivity extends AppCompatActivity {
         Future<?> future = executor.submit(() -> {
             if (Thread.currentThread().isInterrupted()) return;
 
+            // 💡 下载前确保父目录存在
+            File parentDir = targetFile.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                parentDir.mkdirs();
+            }
+
             boolean success = downloadFromFtp(ftpPath, targetFile, listener);
             if (success && !Thread.currentThread().isInterrupted()) {
                 mainHandler.post(() -> {
@@ -184,17 +194,44 @@ public class FullScreenActivity extends AppCompatActivity {
         downloadTasks.put(position, future);
     }
 
+    /**
+     * 💡 懒连接：首次调用时建立 FTP 连接，后续复用同一个连接
+     */
+    private boolean ensureConnected() {
+        if (sharedFtpHelper == null) {
+            sharedFtpHelper = new FtpHelperProxy(this);
+        }
+        // 如果已连接（activeHelper 不为 null），直接返回 true
+        if (sharedFtpHelper.getActiveHelper() != null) {
+            return true;
+        }
+        return sharedFtpHelper.connect(this);
+    }
+
     private boolean downloadFromFtp(String remoteFilePath, File localFile, DownloadProgressListener listener) {
-        FtpInterface ftpHelper = new FtpHelperProxy(this);
-        try {
-            if (Thread.currentThread().isInterrupted()) return false;
-            if (!ftpHelper.connect(this)) return false;
-            return ftpHelper.downloadFile(remoteFilePath, localFile, listener);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        } finally {
-            ftpHelper.disconnect();
+        synchronized (ftpLock) {
+            try {
+                if (Thread.currentThread().isInterrupted()) return false;
+
+                // 💡 复用已有连接，避免每次下载都重新握手
+                if (!ensureConnected()) return false;
+
+                boolean success = sharedFtpHelper.downloadFile(remoteFilePath, localFile, listener);
+
+                // 如果下载失败，可能是连接断了，尝试重连后重试一次
+                if (!success && !Thread.currentThread().isInterrupted()) {
+                    Log.w("FullScreenActivity", "Download failed, attempting reconnect...");
+                    if (sharedFtpHelper.reconnect(this)) {
+                        success = sharedFtpHelper.downloadFile(remoteFilePath, localFile, listener);
+                    }
+                }
+
+                return success;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return false;
+            }
+            // 💡 注意：不在 finally 中 disconnect，保持连接供下次复用
         }
     }
 
@@ -218,6 +255,12 @@ public class FullScreenActivity extends AppCompatActivity {
         }
         downloadTasks.clear();
         executor.shutdownNow();
+
+        // 💡 断开共享的 FTP 连接
+        if (sharedFtpHelper != null) {
+            sharedFtpHelper.disconnect();
+            sharedFtpHelper = null;
+        }
 
         if (adapter != null) {
             adapter.releaseAllPlayers();
