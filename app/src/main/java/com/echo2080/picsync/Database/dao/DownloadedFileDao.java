@@ -32,6 +32,9 @@ public interface DownloadedFileDao {
     @Query("SELECT * FROM downloaded_files WHERE captureTime > :timestamp")
     List<DownloadedFileEntity> getFilesAfterTimestamp(long timestamp);
 
+    @Query("SELECT * FROM downloaded_files WHERE captureTime < :timestamp")
+    List<DownloadedFileEntity> getFilesBeforeTimestamp(long timestamp);
+
     @androidx.room.Update
     void updateCaptureTime(DownloadedFileEntity entity);
 

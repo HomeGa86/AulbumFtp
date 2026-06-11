@@ -558,6 +558,41 @@ public class ThumbnailHelper {
     String nameWithoutExt = fileName.replaceAll("\\.[^.]+$", "");
 
     // ---------------------------------------------------------
+    // 💡 新增优先方案: 纯数字日期格式 (YYYYMMDDHHmmss 或 YYYYMMDDHHmmssSSS)
+    // 例如: 20230710062958585 -> 2023-07-10 06:29:58.585
+    // 必须在通用方案 A 之前运行，否则 \d{10,13} 会贪婪地匹配错误片段
+    // ---------------------------------------------------------
+    if (nameWithoutExt.matches("\\d{14,17}")) {
+        try {
+            int year   = Integer.parseInt(nameWithoutExt.substring(0, 4));
+            int month  = Integer.parseInt(nameWithoutExt.substring(4, 6));
+            int day    = Integer.parseInt(nameWithoutExt.substring(6, 8));
+            int hour   = Integer.parseInt(nameWithoutExt.substring(8, 10));
+            int minute = Integer.parseInt(nameWithoutExt.substring(10, 12));
+            int second = Integer.parseInt(nameWithoutExt.substring(12, 14));
+            int millis = 0;
+            if (nameWithoutExt.length() >= 17) {
+                millis = Integer.parseInt(nameWithoutExt.substring(14, 17));
+            } else if (nameWithoutExt.length() > 14) {
+                // 处理15-16位的情况，右对齐补齐到3位
+                String msPart = nameWithoutExt.substring(14);
+                millis = Integer.parseInt(msPart) * (int) Math.pow(10, 3 - msPart.length());
+            }
+
+            java.util.Calendar calendar = java.util.Calendar.getInstance();
+            calendar.set(year, month - 1, day, hour, minute, second);
+            calendar.set(java.util.Calendar.MILLISECOND, millis);
+
+            long parsedTime = calendar.getTimeInMillis();
+            if (isValidTimestamp(parsedTime)) {
+                return parsedTime;
+            }
+        } catch (Exception e) {
+            // 解析失败，继续尝试后续方案
+        }
+    }
+
+    // ---------------------------------------------------------
     // 优先方案: 针对 mmexport 格式特殊处理
     // 格式: mmexport<32位hex>_<13位时间戳> 或 mmexport<13位时间戳>
     // ---------------------------------------------------------
@@ -574,9 +609,15 @@ public class ThumbnailHelper {
         
         // 如果没有下划线，尝试直接从剩余部分提取时间戳
         // 例如: mmexport1730948290240 -> 1730948290240
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{10,13})").matcher(afterPrefix);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{10,})").matcher(afterPrefix);
         if (m.find()) {
-            Long ts = parseAndValidateTimestamp(m.group(1));
+            String digits = m.group(1);
+            // 💡 优先尝试 YYYYMMDDHHmmss 日期格式（14+位）
+            if (digits.length() >= 14) {
+                long dateTs = tryParseYyyyMMddHHmmss(digits);
+                if (dateTs != 0) return dateTs;
+            }
+            Long ts = parseAndValidateTimestamp(digits.length() > 13 ? digits.substring(0, 13) : digits);
             if (ts != 0) return ts;
         }
     }
@@ -596,10 +637,17 @@ public class ThumbnailHelper {
                 .replace("WhatsAppImage", "")
                 .replace("WhatsAppVideo", "");
 
-        // 从清理后的片段中提取连续数字
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{10,13})").matcher(cleaned);
+        // 从清理后的片段中提取连续数字（10位及以上）
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{10,})").matcher(cleaned);
         while (m.find()) {
-            Long ts = parseAndValidateTimestamp(m.group(1));
+            String digits = m.group(1);
+            // 💡 优先尝试 YYYYMMDDHHmmss 日期格式（14+位）
+            // 解决类似 "QQ空间视频_202205110019111652199551655" 的文件名
+            if (digits.length() >= 14) {
+                long dateTs = tryParseYyyyMMddHHmmss(digits);
+                if (dateTs != 0) return dateTs;
+            }
+            Long ts = parseAndValidateTimestamp(digits.length() > 13 ? digits.substring(0, 13) : digits);
             if (ts != 0) return ts;
         }
     }
@@ -607,7 +655,7 @@ public class ThumbnailHelper {
     // ---------------------------------------------------------
     // 兜底方案 B: 匹配日期格式 (20260517_123456 等)
     // ---------------------------------------------------------
-    String dateRegex = "(\\d{4})[-_]?(\\d{2})[-_]?(\\d{2})[_T ]?(\\d{2}):?(\\d{2}):?(\\d{2})";
+    String dateRegex = "(\\d{4})[-_]?(\\d{2})[-_]?(\\d{2})[_T ]?(\\d{2}):?(\\d{2}):?(\\d{2})(?:[._](\\d{1,3}))?";
     java.util.regex.Matcher dateMatcher = java.util.regex.Pattern.compile(dateRegex).matcher(nameWithoutExt);
 
     if (dateMatcher.find()) {
@@ -619,9 +667,17 @@ public class ThumbnailHelper {
             int minute = Integer.parseInt(dateMatcher.group(5));
             int second = Integer.parseInt(dateMatcher.group(6));
 
+            // 💡 提取可选的毫秒部分
+            int millis = 0;
+            String msGroup = dateMatcher.group(7);
+            if (msGroup != null && !msGroup.isEmpty()) {
+                // 补齐到3位: "5" -> 500, "58" -> 580, "585" -> 585
+                millis = Integer.parseInt(msGroup) * (int) Math.pow(10, 3 - msGroup.length());
+            }
+
             java.util.Calendar calendar = java.util.Calendar.getInstance();
             calendar.set(year, month - 1, day, hour, minute, second);
-            calendar.set(java.util.Calendar.MILLISECOND, 0);
+            calendar.set(java.util.Calendar.MILLISECOND, millis);
 
             long parsedTime = calendar.getTimeInMillis();
             if (isValidTimestamp(parsedTime)) {
@@ -660,6 +716,37 @@ public class ThumbnailHelper {
 
 
         return 0;
+}
+
+/**
+ * 尝试将字符串的前14位解析为 YYYYMMDDHHmmss 格式的日期时间
+ * 带有严格的月/日/时/分/秒范围校验，避免将随机数字误判为日期
+ * @return 毫秒时间戳，无效则返回 0
+ */
+private static long tryParseYyyyMMddHHmmss(String digits) {
+    if (digits == null || digits.length() < 14) return 0;
+    try {
+        int year   = Integer.parseInt(digits.substring(0, 4));
+        int month  = Integer.parseInt(digits.substring(4, 6));
+        int day    = Integer.parseInt(digits.substring(6, 8));
+        int hour   = Integer.parseInt(digits.substring(8, 10));
+        int minute = Integer.parseInt(digits.substring(10, 12));
+        int second = Integer.parseInt(digits.substring(12, 14));
+
+        if (month < 1 || month > 12) return 0;
+        if (day < 1 || day > 31) return 0;
+        if (hour > 23 || minute > 59 || second > 59) return 0;
+
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.setLenient(false);
+        cal.set(year, month - 1, day, hour, minute, second);
+        cal.set(java.util.Calendar.MILLISECOND, 0);
+
+        long ts = cal.getTimeInMillis();
+        return isValidTimestamp(ts) ? ts : 0;
+    } catch (Exception e) {
+        return 0;
+    }
 }
 
 /**

@@ -54,6 +54,7 @@ public class SyncService extends Service implements DownloadProgressListener {
     private static final String PREFS_NAME = "AppSettings";
     private static final String KEY_LAST_FULL_SYNC_TIME = "last_full_sync_time";
     private static final String KEY_LAST_UPLOAD_TIME = "last_upload_time";
+    private static final String KEY_MIGRATION_DONE = "capture_time_migration_done1";
     private static final long FULL_SYNC_INTERVAL_MS = 10 * 24 * 60 * 60 * 1000L;
     private LogHelper logHelper;
 
@@ -138,10 +139,13 @@ public class SyncService extends Service implements DownloadProgressListener {
         long lastFullSyncTime = prefs.getLong(KEY_LAST_FULL_SYNC_TIME, 0L);
         long currentTime = System.currentTimeMillis();
 
-//        migrateCaptureTime();
-//        if(2==2) {
-//            return;
-//        }
+        // 数据补丁只需要执行一次
+        boolean migrationDone = prefs.getBoolean(KEY_MIGRATION_DONE, false);
+        if (!migrationDone) {
+            migrateCaptureTime();
+            prefs.edit().putBoolean(KEY_MIGRATION_DONE, true).apply();
+        }
+        printFileNamesWithWrongCaptureTime();
 
         if (currentTime - lastFullSyncTime < FULL_SYNC_INTERVAL_MS) {
             long daysRemaining = (FULL_SYNC_INTERVAL_MS - (currentTime - lastFullSyncTime)) / (24 * 60 * 60 * 1000);
@@ -627,10 +631,12 @@ public class SyncService extends Service implements DownloadProgressListener {
 
     public void migrateCaptureTime() {
         // 1. 设定时间阈值：2026年4月30日 23:59:59 的时间戳
-        long thresholdTimestamp = 1777564799000L;
+        long thresholdTimestamp = 946684800000L;
 
         // 2. 从数据库取出所有 captureTime 在 2026年4月份之后的记录
-        List<DownloadedFileEntity> files = database.downloadedFileDao().getFilesAfterTimestamp(thresholdTimestamp);
+        List<DownloadedFileEntity> files = database.downloadedFileDao().getFilesBeforeTimestamp(thresholdTimestamp);
+
+        files.addAll(database.downloadedFileDao().getFilesAfterTimestamp(1798761600000L));
 
         if (files == null || files.isEmpty()) {
             System.out.println("没有找到需要更新的记录。");
@@ -660,9 +666,25 @@ public class SyncService extends Service implements DownloadProgressListener {
             }
         }
 
-        System.out.println("数据清洗完成，共更新了 " + updateCount + " 条记录。");
-        notifyUI("数据清洗完成，共更新了 " + updateCount + " 条记录。");
+        logHelper.logToFile("Data patch done: " + updateCount + " patched");
     }
+
+    public void printFileNamesWithWrongCaptureTime() {
+        long thresholdTimestamp = 946684800000L;
+        List<DownloadedFileEntity> files = database.downloadedFileDao().getFilesBeforeTimestamp(thresholdTimestamp);
+
+        files.addAll(database.downloadedFileDao().getFilesAfterTimestamp(1798761600000L));
+
+        if (files == null || files.isEmpty()) {
+            return;
+        }
+
+        for (DownloadedFileEntity file : files) {
+            String ftpPath = file.getFtpPath();
+            logHelper.logToFile("Capture time:" + file.getCaptureTime() + "file path:" +   ftpPath);
+        }
+    }
+
 
     /**
      * 上传本地相册文件到服务器

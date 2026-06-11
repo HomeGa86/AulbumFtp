@@ -811,6 +811,8 @@ public class MainActivity extends AppCompatActivity {
                     isDraggingScrollbar = true;
                     lastTouchY = event.getRawY();
                     v.setAlpha(1.0f);
+                    // 💡 FIX: 防止 RecyclerView 和父容器拦截后续触摸事件（Android 12+ 必须）
+                    v.getParent().requestDisallowInterceptTouchEvent(true);
                     return true;
 
                 case MotionEvent.ACTION_MOVE:
@@ -825,7 +827,7 @@ public class MainActivity extends AppCompatActivity {
                     // 计算新的滑块Y坐标（限制在轨道范围内）
                     float newThumbY = Math.max(0, Math.min(currentThumbY + deltaY, trackHeight));
 
-                    // 【核心修复】直接同步设置滑块位置，不等待 onScrolled 回调
+                    // 直接同步设置滑块位置
                     v.setY(newThumbY);
 
                     // 根据新位置反算列表应该滚动到的绝对偏移量
@@ -837,9 +839,6 @@ public class MainActivity extends AppCompatActivity {
                         float ratio = newThumbY / trackHeight;
                         int targetOffset = (int) (ratio * maxScroll);
 
-                        // 使用 scrollTo 而不是 scrollBy，避免累积误差和惯性延迟
-                        // 注意：RecyclerView 没有直接的 scrollTo(offset)，需要通过 LayoutManager 实现
-                        // 这里改用精确的 scrollBy 差值计算
                         int currentOffset = recyclerView.computeVerticalScrollOffset();
                         int actualDelta = targetOffset - currentOffset;
                         if (actualDelta != 0) {
@@ -853,7 +852,7 @@ public class MainActivity extends AppCompatActivity {
                     isDraggingScrollbar = false;
                     lastTouchY = -1f;
                     v.setAlpha(0.7f);
-                    // 【关键】手指抬起时，强制同步一次位置，消除最后的跳变
+                    // 手指抬起时，强制同步一次位置，消除最后的跳变
                     updateThumbPosition();
                     return true;
             }

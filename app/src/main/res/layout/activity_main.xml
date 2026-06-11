@@ -10,12 +10,20 @@
     android:padding="4dp"
     android:clipToPadding="false" />
 
-    <View
+    <FrameLayout
         android:id="@+id/custom_scrollbar_thumb"
-        android:layout_width="10dp"
+        android:layout_width="48dp"
         android:layout_height="60dp"
         android:layout_gravity="end|top"
-        android:background="@drawable/scrollbar_thumb_bg"
-        android:elevation="4dp" />
+        android:background="@android:color/transparent">
+
+        <View
+            android:id="@+id/scrollbar_thumb_visual"
+            android:layout_width="10dp"
+            android:layout_height="60dp"
+            android:layout_gravity="end"
+            android:background="@drawable/scrollbar_thumb_bg"
+            android:elevation="4dp" />
+    </FrameLayout>
 
 </FrameLayout>
