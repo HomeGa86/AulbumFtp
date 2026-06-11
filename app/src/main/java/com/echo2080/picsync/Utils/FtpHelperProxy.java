@@ -19,6 +19,31 @@ public class FtpHelperProxy implements FtpInterface {
     private boolean hasBackup = false;
     private static volatile String lastSuccessType = null;
 
+    // 💡 全局单例：整个 App 生命周期内复用同一个连接，避免重复握手
+    private static volatile FtpHelperProxy sInstance;
+
+    /**
+     * 获取全局单例 FtpHelperProxy（懒初始化）
+     * 内部已使用 applicationContext，不会造成 Activity 内存泄漏
+     */
+    public static synchronized FtpHelperProxy getInstance(android.content.Context context) {
+        if (sInstance == null) {
+            sInstance = new FtpHelperProxy(context.getApplicationContext());
+        }
+        return sInstance;
+    }
+
+    /**
+     * 销毁全局单例并断开连接。
+     * 当 FTP 配置变更时调用，下次 getInstance 将用新配置重建。
+     */
+    public static synchronized void destroyInstance() {
+        if (sInstance != null) {
+            sInstance.disconnect();
+            sInstance = null;
+        }
+    }
+
 
     public FtpHelperProxy(Context context) {
         this.context = context.getApplicationContext();

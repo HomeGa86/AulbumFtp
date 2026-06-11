@@ -195,12 +195,10 @@ public class FullScreenActivity extends AppCompatActivity {
     }
 
     /**
-     * 💡 懒连接：首次调用时建立 FTP 连接，后续复用同一个连接
+     * 💡 懒连接：使用全局单例 FTP 连接，App 整个生命周期内复用
      */
     private boolean ensureConnected() {
-        if (sharedFtpHelper == null) {
-            sharedFtpHelper = new FtpHelperProxy(this);
-        }
+        sharedFtpHelper = FtpHelperProxy.getInstance(this);
         // 如果已连接（activeHelper 不为 null），直接返回 true
         if (sharedFtpHelper.getActiveHelper() != null) {
             return true;
@@ -256,11 +254,8 @@ public class FullScreenActivity extends AppCompatActivity {
         downloadTasks.clear();
         executor.shutdownNow();
 
-        // 💡 断开共享的 FTP 连接
-        if (sharedFtpHelper != null) {
-            sharedFtpHelper.disconnect();
-            sharedFtpHelper = null;
-        }
+        // 💡 不断开全局单例连接，保留给其他页面复用
+        // 连接会在 FTP 配置变更或 App 进程退出时被销毁
 
         if (adapter != null) {
             adapter.releaseAllPlayers();

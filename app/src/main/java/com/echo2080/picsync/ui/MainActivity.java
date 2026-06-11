@@ -200,6 +200,8 @@ public class MainActivity extends AppCompatActivity {
                         database.serverFileDao().deleteAll();
                         Log.d("MainActivity", "FTP配置已更改，已清空服务器文件缓存表。");
 
+                        // 💡 FTP 配置变更，销毁全局单例连接，下次使用时会用新配置重建
+                        FtpHelperProxy.destroyInstance();
                         FtpHelperProxy.resetLastSuccessType();
                         SyncService.resetFullSyncTimestamp(this);
                         startSyncServiceWithDelay();
@@ -446,6 +448,19 @@ public class MainActivity extends AppCompatActivity {
                         int successCount = 0;
                         int failCount = 0;
 
+                        // 💡 使用全局单例连接，避免每个文件都重新握手
+                        FtpHelperProxy ftpHelper = FtpHelperProxy.getInstance(this);
+                        if (ftpHelper.getActiveHelper() == null && !ftpHelper.connect(this)) {
+                            // 连接失败，全部跳过
+                            final int f = selectedItems.size();
+                            runOnUiThread(() -> {
+                                adapter.clearSelection();
+                                Toast.makeText(MainActivity.this, getString(R.string.failed_to_delete_server_files), Toast.LENGTH_SHORT).show();
+                                loadImages();
+                            });
+                            return;
+                        }
+
                         for (ImageItem item : selectedItems) {
                             if (Thread.currentThread().isInterrupted()) break;
 
@@ -457,13 +472,7 @@ public class MainActivity extends AppCompatActivity {
                                 continue;
                             }
 
-                            FtpInterface ftpHelper = new FtpHelperProxy(this);
                             try {
-                                if (!ftpHelper.connect(this)) {
-                                    failCount++;
-                                    continue;
-                                }
-
                                 boolean deleted = ftpHelper.deleteFile(ftpPath);
                                 if (deleted) {
                                     successCount++;
@@ -484,9 +493,8 @@ public class MainActivity extends AppCompatActivity {
                             } catch (Exception e) {
                                 e.printStackTrace();
                                 failCount++;
-                            } finally {
-                                ftpHelper.disconnect();
                             }
+                            // 💡 不断开连接，保留给后续操作复用
                         }
 
                         final int s = successCount;
@@ -511,17 +519,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean downloadFromFtp(String remoteFilePath, File localFile, DownloadProgressListener listener) {
-        FtpInterface ftpHelper = new FtpHelperProxy(this);
+        // 💡 使用全局单例 FTP 连接，避免每次操作都重新握手
+        FtpHelperProxy ftpHelper = FtpHelperProxy.getInstance(this);
         try {
             if (Thread.currentThread().isInterrupted()) return false;
-            if (!ftpHelper.connect(this)) return false;
+            if (ftpHelper.getActiveHelper() == null && !ftpHelper.connect(this)) return false;
             return ftpHelper.downloadFile(remoteFilePath, localFile, listener);
         } catch (Exception e) {
             e.printStackTrace();
             return false;
-        } finally {
-            ftpHelper.disconnect();
         }
+        // 💡 不断开连接，保留给后续操作复用
     }
 
 
