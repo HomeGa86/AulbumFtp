@@ -22,6 +22,10 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Switch to official Gradle distribution for CI
+        run: |
+          sed -i 's|https://mirrors.cloud.tencent.com/gradle/|https://services.gradle.org/distributions/|g' gradle/wrapper/gradle-wrapper.properties
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
