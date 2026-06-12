@@ -88,8 +88,8 @@ public class LogHelper {
                 }
 
                 // 拼接结果
-                for (String l : recentLines) {
-                    text.append(l).append("\n");
+                for (java.util.Iterator<String> it = recentLines.descendingIterator(); it.hasNext(); ) {
+                    text.append(it.next()).append("\n");
                 }
 
                 if (text.length() == 0) {
@@ -122,9 +122,8 @@ public class LogHelper {
                     recentLines.addLast(line);
                 }
 
-                // 拼接结果
-                for (String l : recentLines) {
-                    text.append(l).append("\n");
+                for (java.util.Iterator<String> it = recentLines.descendingIterator(); it.hasNext(); ) {
+                    text.append(it.next()).append("\n");
                 }
 
                 if (text.length() == 0) {
